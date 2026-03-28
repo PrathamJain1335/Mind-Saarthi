@@ -1,74 +1,94 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { ArrowRight, Bot, Sparkles } from 'lucide-react';
+import { ArrowRight, Bot, Sparkles, ShieldCheck, HeartPulse } from 'lucide-react';
 import WebTabPreview from './WebTabPreview';
+import { useTheme } from '../ThemeContext';
 
 const HeroSection = () => {
-    return (
-        <section className="relative min-h-screen flex items-center justify-center pt-20 overflow-hidden bg-background-light dark:bg-background-dark">
-            {/* Animated Background Elements */}
-            <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                <div className="absolute -top-[20%] -left-[10%] w-[50%] h-[50%] rounded-full bg-primary/10 dark:bg-primary/5 blur-[120px] mix-blend-multiply dark:mix-blend-lighten animate-pulse-slow"></div>
-                <div className="absolute top-[30%] -right-[10%] w-[40%] h-[40%] rounded-full bg-accent/10 dark:bg-accent/5 blur-[120px] mix-blend-multiply dark:mix-blend-lighten animate-pulse-slow" style={{ animationDelay: '1.5s' }}></div>
+    const { darkMode } = useTheme();
 
-                {/* Neural Network Lines pattern (subtle) */}
-                <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCI+CjxwYXRoIGQ9Ik0wIDhoNDB2NDBIMHoiIGZpbGw9Im5vbmUiLz4KPHBhdGggZD0iTTIwIDIwTDAgMEwyMCAyMEw0MCAwTDIwIDIwdjIweiIgc3Ryb2tlPSJyZ2JhKDIzLCA5MyLCAxOTcsIDAuMDUpIiBzdHJva2Utd2lkdGg9IjEiIGZpbGw9Im5vbmUiLz4KPC9zdmc+')] opacity-50 dark:opacity-20 mask-image:linear-gradient(to_bottom,white,transparent)"></div>
+    return (
+        <section className="relative min-h-screen flex items-center justify-center pt-32 pb-24 overflow-hidden transition-colors duration-500">
+            {/* Dynamic Background Blobs */}
+            <div className="absolute inset-0 pointer-events-none overflow-hidden -z-10">
+                <div className="bg-blob w-[600px] h-[600px] bg-primary -top-40 -left-20 opacity-10 dark:opacity-20 blur-[100px]" />
+                <div className="bg-blob w-[500px] h-[500px] bg-accent -bottom-20 -right-20 opacity-10 dark:opacity-20 blur-[100px] delay-2000" />
+                <div className="absolute top-[20%] left-[60%] w-[300px] h-[300px] bg-emerald-400 rounded-full opacity-10 blur-[80px] animate-pulse-slow" />
             </div>
 
-            <div className="container mx-auto px-6 relative z-10 max-w-6xl pt-10">
-                <div className="flex flex-col items-center text-center">
+            <div className="container mx-auto px-6 relative z-10 max-w-7xl">
+                <div className="flex flex-col lg:flex-row items-center gap-16">
+                    {/* Left Column: Content */}
+                    <div className="flex-1 text-center lg:text-left">
+                        <motion.div
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.6 }}
+                            className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl glass mb-8 border-primary/20"
+                        >
+                            <Sparkles size={16} className="text-primary animate-float" />
+                            <span className="text-[10px] font-black uppercase tracking-widest text-primary">Healthcare 2.0 • AI-Powered</span>
+                        </motion.div>
+
+                        <motion.h1
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.6, delay: 0.2 }}
+                            className="text-5xl md:text-7xl font-bold tracking-tight mb-8 leading-[1.1]"
+                        >
+                            Your Emotional <br />
+                            <span className="text-primary animate-shimmer bg-gradient-to-r from-primary via-primary-light to-primary bg-[length:200%_auto] bg-clip-text text-transparent">Guardian</span> Always.
+                        </motion.h1>
+
+                        <motion.p
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.6, delay: 0.3 }}
+                            className="text-lg md:text-xl opacity-70 mb-10 max-w-2xl lg:mx-0 leading-relaxed font-medium"
+                        >
+                            Experience MindSaarthi AI—a calming, private space where deep empathy meets next-gen intelligence to support your mental wellness journey.
+                        </motion.p>
+
+                        <motion.div
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.6, delay: 0.4 }}
+                            className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start"
+                        >
+                            <button className="btn-primary !py-4 !px-8 flex items-center justify-center gap-3 group shadow-2xl shadow-primary/20">
+                                Start Your Journey <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
+                            </button>
+                            <button className="btn-outline !py-4 !px-8 flex items-center justify-center gap-3">
+                                <Bot size={20} className="text-primary" /> How it Works
+                            </button>
+                        </motion.div>
+
+                        <motion.div 
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            transition={{ delay: 0.8 }}
+                            className="mt-12 flex flex-wrap justify-center lg:justify-start items-center gap-8 opacity-50 grayscale hover:grayscale-0 transition-all duration-500"
+                        >
+                            <div className="flex items-center gap-2 font-bold uppercase tracking-widest text-[10px]">
+                                <ShieldCheck size={14} className="text-emerald-500" /> Secure HIPAA
+                            </div>
+                            <div className="flex items-center gap-2 font-bold uppercase tracking-widest text-[10px]">
+                                <HeartPulse size={14} className="text-accent" /> Empathetic AI
+                            </div>
+                        </motion.div>
+                    </div>
+
+                    {/* Right Column: Preview */}
                     <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.6, delay: 0.3 }}
-                        className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 dark:bg-primary/20 text-primary dark:text-primary-light font-medium text-sm mb-6 border border-primary/20"
+                        initial={{ opacity: 0, scale: 0.9, x: 50 }}
+                        animate={{ opacity: 1, scale: 1, x: 0 }}
+                        transition={{ duration: 1, delay: 0.3, type: "spring", stiffness: 50 }}
+                        className="flex-1 w-full lg:max-w-[50%]"
                     >
-                        <Sparkles size={16} />
-                        <span>Next-Generation AI Healthcare</span>
-                    </motion.div>
-
-                    <motion.h1
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.6, delay: 0.4 }}
-                        className="text-5xl md:text-7xl font-extrabold text-slate-900 dark:text-white mb-6 tracking-tight leading-tight"
-                    >
-                        Mind Saarthi: Your <br />
-                        <span className="text-secondary dark:text-primary-light">Compass</span> for Mental Wellness
-                    </motion.h1>
-
-                    <motion.p
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.6, delay: 0.5 }}
-                        className="text-xl text-slate-600 dark:text-slate-300 mb-10 max-w-2xl mx-auto leading-relaxed"
-                    >
-                        Empowering emotional resilience through context-aware AI. Private, empathetic, and always here for your journey to better health.
-                    </motion.p>
-
-                    <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.6, delay: 0.6 }}
-                        className="flex flex-col sm:flex-row gap-4 mb-20"
-                    >
-                        <button className="px-8 py-4 bg-primary hover:bg-primary-light text-white rounded-full font-bold shadow-xl shadow-primary/20 transition-all hover:scale-105 flex items-center justify-center gap-2 group">
-                            Get Started Free <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
-                        </button>
-                        <button className="px-8 py-4 bg-white dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 rounded-full font-bold hover:bg-slate-50 dark:hover:bg-slate-700 transition-all flex items-center justify-center gap-2">
-                            <Bot size={20} className="text-primary" /> Meet the AI
-                        </button>
-                    </motion.div>
-
-                    {/* Crazy Mini Web Tab Preview */}
-                    <motion.div
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        whileInView={{ opacity: 1, scale: 1 }}
-                        viewport={{ once: true }}
-                        transition={{ duration: 1, delay: 0.7 }}
-                        className="w-full relative"
-                    >
-                        <WebTabPreview />
+                        <div className="relative">
+                            <div className="absolute -inset-4 bg-primary/20 blur-3xl opacity-30 -z-10 animate-pulse-slow rounded-full" />
+                            <WebTabPreview />
+                        </div>
                     </motion.div>
                 </div>
             </div>

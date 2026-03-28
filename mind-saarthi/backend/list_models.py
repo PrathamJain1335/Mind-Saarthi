@@ -1,10 +1,10 @@
 import os
 from dotenv import load_dotenv
-from google import genai
+from openai import OpenAI
 
 load_dotenv()
-key = os.getenv('GEMINI_API_KEY').strip()
-client = genai.Client(api_key=key)
+key = os.getenv('OPENROUTER_API_KEY').strip()
+client = OpenAI(api_key=key)
 
 try:
     models = client.models.list()

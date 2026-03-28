@@ -1,0 +1,9 @@
+{
+  "short_name": "MindSaarthi",
+  "name": "MindSaarthi AI Mental Wellness",
+  "icons": [],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#175dc5",
+  "background_color": "#ffffff"
+}

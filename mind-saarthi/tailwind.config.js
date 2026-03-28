@@ -10,35 +10,49 @@ export default {
             colors: {
                 primary: {
                     DEFAULT: '#175dc5',
-                    light: '#2a75e3',
-                    dark: '#114a9c'
+                    light: '#3b82f6',
+                    dark: '#1e40af',
+                    soft: '#eef4ff'
                 },
                 accent: {
                     DEFAULT: '#ff1d24',
-                    light: '#ff3d42',
-                    dark: '#cc151a'
+                    light: '#ff4d4d',
+                    dark: '#b91c1c',
+                    soft: '#fff1f1'
                 },
                 background: {
-                    light: '#FFFFFF',
-                    dark: '#0B1121' // deep navy background
+                    light: '#ffffff',
+                    dark: '#0f172a'
                 },
                 surface: {
-                    light: '#F8FAFC',
-                    dark: '#162035'
+                    light: '#f8fafc',
+                    dark: '#1e293b'
                 }
             },
             fontFamily: {
                 sans: ['Inter', 'system-ui', 'sans-serif'],
+                heading: ['Poppins', 'Inter', 'system-ui', 'sans-serif'],
+            },
+            borderRadius: {
+                '2xl': '1rem',
+                '3xl': '1.5rem',
             },
             animation: {
                 'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
                 'float': 'float 6s ease-in-out infinite',
+                'blob': 'blob 7s infinite',
                 'shimmer': 'shimmer 2s linear infinite',
             },
             keyframes: {
                 float: {
                     '0%, 100%': { transform: 'translateY(0)' },
-                    '50%': { transform: 'translateY(-10px)' },
+                    '50%': { transform: 'translateY(-20px)' },
+                },
+                blob: {
+                    '0%': { transform: 'translate(0px, 0px) scale(1)' },
+                    '33%': { transform: 'translate(30px, -50px) scale(1.1)' },
+                    '66%': { transform: 'translate(-20px, 20px) scale(0.9)' },
+                    '100%': { transform: 'translate(0px, 0px) scale(1)' },
                 },
                 shimmer: {
                     '0%': { backgroundPosition: '-1000px 0' },

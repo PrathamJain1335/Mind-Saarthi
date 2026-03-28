@@ -1,17 +1,19 @@
-
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Moon, Sun, Menu, X, Info, Cpu, Briefcase, Award } from 'lucide-react';
+import { Menu, X, Info, Cpu, Briefcase, Award } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useTheme } from '../ThemeContext';
 import LogoImg from '../assets/mind-saarthi-logo.png';
+import ThemeToggle from './common/ThemeToggle';
 
-const Navbar = ({ darkMode, toggleTheme }) => {
+const Navbar = () => {
+    const { darkMode } = useTheme();
     const [isScrolled, setIsScrolled] = useState(false);
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
     useEffect(() => {
         const handleScroll = () => {
-            setIsScrolled(window.scrollY > 10);
+            setIsScrolled(window.scrollY > 20);
         };
         window.addEventListener('scroll', handleScroll);
         return () => window.removeEventListener('scroll', handleScroll);
@@ -26,107 +28,106 @@ const Navbar = ({ darkMode, toggleTheme }) => {
 
     return (
         <>
-            {/* Logo Section - Absolute position so it scrolls away */}
-            <div className="absolute top-4 left-6 z-20 pointer-events-none">
+            {/* Main Navigation Wrapper */}
+            <div className="fixed top-0 left-0 w-full z-50 px-6 py-4 flex justify-between items-center transition-all duration-500">
+                {/* Logo */}
                 <motion.div
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
-                    transition={{ duration: 0.5 }}
-                    className="pointer-events-auto"
+                    className="flex-shrink-0"
                 >
-                    <Link to="/">
+                    <Link to="/" className="flex items-center gap-2 group">
                         <img
                             src={LogoImg}
-                            alt="Mind Saarthi Logo"
-                            className="h-44 md:h-60 w-auto object-contain drop-shadow-2xl hover:scale-105 transition-transform duration-300"
+                            alt="Mind Saarthi"
+                            className="h-12 w-auto object-contain transition-transform group-hover:scale-105"
                         />
                     </Link>
                 </motion.div>
-            </div>
 
-            {/* Floating Pill Navbar */}
-            <div className="fixed top-6 left-0 w-full flex justify-center z-50 px-4 pointer-events-none">
+                {/* Desktop Nav Pill */}
                 <motion.nav
-                    initial={{ y: -100, opacity: 0 }}
+                    initial={{ y: -20, opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
-                    className={`pointer-events-auto flex items-center gap-2 pl-6 pr-2 py-2 rounded-full border shadow-2xl transition-all duration-500 backdrop-blur-xl ${isScrolled
-                        ? 'bg-white/70 dark:bg-slate-900/80 border-black/5 dark:border-white/20'
-                        : 'bg-white/30 dark:bg-black/40 border-black/5 dark:border-white/10'
-                        }`}
+                    className={`hidden lg:flex items-center gap-2 px-3 py-2 rounded-2xl border transition-all duration-500 backdrop-blur-xl ${
+                        isScrolled
+                        ? 'glass shadow-2xl border-white/20'
+                        : 'bg-white/10 dark:bg-black/10 border-transparent'
+                    }`}
                 >
-                    {/* Desktop Nav Links */}
-                    <ul className="hidden lg:flex items-center gap-1">
+                    <ul className="flex items-center gap-1">
                         {navLinks.map((link) => (
                             <li key={link.name}>
                                 <a
                                     href={link.href}
-                                    className="flex items-center gap-2 px-4 py-2 text-[13px] font-bold text-slate-700 dark:text-slate-300 hover:text-primary dark:hover:text-white transition-all rounded-full hover:bg-black/5 dark:hover:bg-white/10 active:scale-95 duration-200 whitespace-nowrap"
+                                    className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-700 dark:text-slate-300 hover:text-primary dark:hover:text-white transition-all rounded-xl hover:bg-primary/5 active:scale-95 duration-200"
                                 >
-                                    {link.icon}
                                     {link.name}
                                 </a>
                             </li>
                         ))}
                     </ul>
+                </motion.nav>
 
-                    {/* Divider and Actions */}
-                    <div className="hidden lg:block w-px h-6 bg-black/10 dark:bg-white/10 mx-2" />
-
-                    <div className="flex items-center gap-2">
-                        <button
-                            onClick={toggleTheme}
-                            className="p-2.5 rounded-full bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 border border-black/5 dark:border-white/5 transition-all text-slate-600 dark:text-slate-300 hover:text-primary dark:hover:text-white active:rotate-12 duration-300"
-                            aria-label="Toggle Theme"
-                        >
-                            {darkMode ? <Sun size={18} /> : <Moon size={18} />}
-                        </button>
-
+                {/* Right Side Actions */}
+                <div className="flex items-center gap-3">
+                    <div className={`${isScrolled ? 'glass' : 'bg-white/10 dark:bg-black/10'} p-1 rounded-2xl border border-transparent transition-all duration-500 flex items-center gap-2`}>
+                        <ThemeToggle />
                         <Link
                             to="/login"
-                            className="hidden lg:flex bg-primary hover:bg-primary-light text-white px-5 py-2.5 rounded-full text-[13px] font-bold shadow-lg shadow-primary/20 transition-all hover:scale-105 active:scale-95 duration-200 whitespace-nowrap"
+                            className="hidden lg:flex btn-primary !rounded-xl !py-2 !px-5 text-sm"
                         >
-                            Start Screening
+                            Get Started
                         </Link>
+                        {/* Mobile Menu Toggle */}
+                        <button
+                            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                            className="lg:hidden p-2 rounded-xl text-slate-700 dark:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                        >
+                            {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+                        </button>
                     </div>
-
-                    {/* Mobile Menu Toggle */}
-                    <button
-                        onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                        className="lg:hidden text-slate-700 dark:text-white p-2 hover:bg-black/5 dark:hover:bg-white/5 rounded-full transition-colors"
-                    >
-                        {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
-                    </button>
-                </motion.nav>
+                </div>
             </div>
 
-            {/* Mobile Nav Overlay (Floating Style) */}
+            {/* Mobile Nav Overlay */}
             <AnimatePresence>
                 {mobileMenuOpen && (
                     <motion.div
-                        initial={{ opacity: 0, scale: 0.95, y: -20 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.95, y: -20 }}
-                        className="fixed top-24 left-1/2 -translate-x-1/2 w-[90%] max-w-sm z-[55] lg:hidden"
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.95 }}
+                        className="fixed inset-0 z-[45] lg:hidden bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-2xl flex items-center justify-center p-6"
                     >
-                        <div className="bg-white/80 dark:bg-slate-900/90 backdrop-blur-2xl rounded-3xl p-6 shadow-2xl border border-black/5 dark:border-white/10 ring-1 ring-black/5 dark:ring-white/20">
-                            <div className="flex flex-col gap-3">
-                                {navLinks.map((link) => (
-                                    <a
+                        <div className="w-full max-w-sm space-y-8">
+                            <div className="flex flex-col gap-4">
+                                {navLinks.map((link, idx) => (
+                                    <motion.a
                                         key={link.name}
                                         href={link.href}
+                                        initial={{ opacity: 0, x: -20 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        transition={{ delay: idx * 0.1 }}
                                         onClick={() => setMobileMenuOpen(false)}
-                                        className="flex items-center gap-4 px-5 py-4 text-sm font-bold text-slate-700 dark:text-slate-300 hover:text-primary dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 rounded-2xl transition-all border border-transparent hover:border-black/5 dark:hover:border-white/5"
+                                        className="flex items-center gap-4 p-5 text-xl font-bold text-slate-800 dark:text-slate-200 hover:text-primary bg-slate-100 dark:bg-slate-800/50 rounded-2xl transition-all"
                                     >
-                                        <span className="text-primary dark:text-primary-light">{link.icon}</span>
+                                        <span className="text-primary">{link.icon}</span>
                                         {link.name}
-                                    </a>
+                                    </motion.a>
                                 ))}
-                                <Link
-                                    to="/login"
-                                    className="mt-4 w-full bg-primary hover:bg-primary-light text-white font-bold py-4 rounded-2xl text-center shadow-lg shadow-primary/20 transition-all active:scale-95"
+                                <motion.div
+                                    initial={{ opacity: 0, y: 20 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ delay: 0.4 }}
                                 >
-                                    Start Screening
-                                </Link>
+                                    <Link
+                                        to="/login"
+                                        onClick={() => setMobileMenuOpen(false)}
+                                        className="btn-primary w-full !py-5 !text-lg !rounded-2xl"
+                                    >
+                                        Start Free Session
+                                    </Link>
+                                </motion.div>
                             </div>
                         </div>
                     </motion.div>

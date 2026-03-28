@@ -15,6 +15,16 @@ const DemoSection = () => {
     const [isTyping, setIsTyping] = useState(false);
     const [apiError, setApiError] = useState(null);
     const scrollRef = useRef(null);
+    const textareaRef = useRef(null);
+
+    // Auto-resize textarea
+    useEffect(() => {
+        if (textareaRef.current) {
+            textareaRef.current.style.height = '44px';
+            const scrollHeight = textareaRef.current.scrollHeight;
+            textareaRef.current.style.height = Math.min(scrollHeight, 120) + 'px';
+        }
+    }, [inputValue]);
 
     // Auto-scroll to bottom of chat
     useEffect(() => {
@@ -251,6 +261,7 @@ const DemoSection = () => {
                             <form onSubmit={handleSend} className="p-3 bg-[#f0f2f5] dark:bg-[#202c33] border-t border-slate-200 dark:border-slate-800 flex items-end gap-2 z-10">
                                 <div className="flex-1 relative bg-white dark:bg-[#2a3942] rounded-xl shadow-sm border border-transparent focus-within:border-primary/50 transition-colors">
                                     <textarea
+                                        ref={textareaRef}
                                         value={inputValue}
                                         onChange={(e) => setInputValue(e.target.value)}
                                         onKeyDown={(e) => {
@@ -260,9 +271,9 @@ const DemoSection = () => {
                                             }
                                         }}
                                         placeholder="Type a message..."
-                                        className="w-full bg-transparent py-3 pl-4 pr-12 outline-none text-[15px] resize-none max-h-[120px] text-slate-800 dark:text-[#e9edef] dark:placeholder-slate-500 custom-scrollbar"
+                                        className="w-full bg-transparent py-3 pl-4 pr-12 outline-none text-[15px] resize-none text-slate-800 dark:text-[#e9edef] dark:placeholder-slate-500 custom-scrollbar overflow-y-auto"
                                         rows="1"
-                                        style={{ minHeight: '44px', paddingRight: '12px' }}
+                                        style={{ minHeight: '44px', maxHeight: '120px', paddingRight: '12px' }}
                                     />
                                 </div>
                                 <motion.button

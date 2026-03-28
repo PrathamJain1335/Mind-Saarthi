@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Eye, EyeOff, AlertTriangle } from 'lucide-react';
+import { Eye, EyeOff, AlertTriangle, ArrowLeft, Lock, Mail } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useAuth } from '../AuthContext';
+import { useTheme } from '../ThemeContext';
 import LogoImg from '../assets/mind-saarthi-logo.png';
+import ThemeToggle from '../components/common/ThemeToggle';
 
 const LoginPage = () => {
+    const { darkMode } = useTheme();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
@@ -25,85 +28,89 @@ const LoginPage = () => {
             login(res.data.user, res.data.token);
             navigate('/dashboard');
         } catch (err) {
-            setError(err.response?.data?.error || "Failed to login. Please try again.");
+            setError(err.response?.data?.error || "Invalid credentials. Please try again.");
         } finally {
             setLoading(false);
         }
     };
 
     return (
-        <div className="min-h-screen bg-background-light dark:bg-background-dark flex items-center justify-center p-6 relative overflow-hidden">
-            {/* Background elements */}
-            <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-primary/20 blur-[100px] animate-pulse-slow pointer-events-none"></div>
-            <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-accent/20 blur-[100px] animate-pulse-slow pointer-events-none" style={{ animationDelay: '1.5s' }}></div>
+        <div className={`min-h-screen flex items-center justify-center p-6 relative overflow-hidden transition-colors duration-500 ${darkMode ? 'bg-background-dark text-white' : 'bg-background-light text-slate-900'}`}>
+            {/* Background Blobs */}
+            <div className="absolute top-0 left-0 w-full h-full pointer-events-none -z-10 bg-gradient-to-br from-primary/5 to-accent/5">
+                <div className="bg-blob w-[500px] h-[500px] bg-primary -top-40 -left-20 opacity-20" />
+                <div className="bg-blob w-[400px] h-[400px] bg-accent -bottom-20 -right-20 opacity-20 delay-1000" />
+            </div>
+
+            <div className="fixed top-6 left-6 flex items-center gap-4">
+                <Link to="/" className="p-3 glass rounded-2xl hover:bg-white/20 transition-all active:scale-95">
+                    <ArrowLeft size={20} />
+                </Link>
+                <ThemeToggle />
+            </div>
 
             <motion.div
-                initial={{ opacity: 0, y: 30 }}
+                initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6 }}
-                className="w-full max-w-md glass-card bg-white/70 dark:bg-slate-900/70 border border-white/20 dark:border-slate-800/50 p-8 md:p-10 rounded-3xl shadow-2xl relative z-10 backdrop-blur-xl"
+                className="w-full max-w-md glass p-10 rounded-[2.5rem] shadow-2xl relative z-10 border-white/20"
             >
-                <div className="flex justify-center mb-8">
-                    <Link to="/" className="flex items-center gap-2">
-                        <span className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">
-                            MindSaarthi <span className="text-primary dark:text-primary-light">AI</span>
-                        </span>
-                    </Link>
+                <div className="flex flex-col items-center mb-10">
+                    <img src={LogoImg} alt="Logo" className="h-16 w-auto mb-4" />
+                    <h1 className="text-3xl font-bold tracking-tight">Welcome Back</h1>
+                    <p className="text-slate-500 dark:text-slate-400 font-medium">Continue your wellness journey</p>
                 </div>
 
-                <h2 className="text-3xl font-extrabold text-slate-900 dark:text-white text-center mb-2">Welcome Back</h2>
-                <p className="text-slate-600 dark:text-slate-400 text-center mb-8">Sign in to continue your mental health journey</p>
-
                 {error && (
-                    <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 rounded-xl flex items-start gap-3 text-red-600 dark:text-red-400">
+                    <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="mb-6 p-4 bg-accent/10 border border-accent/20 rounded-2xl flex items-start gap-3 text-accent text-sm font-bold">
                         <AlertTriangle className="shrink-0 mt-0.5" size={18} />
-                        <span className="text-sm font-medium">{error}</span>
+                        <span>{error}</span>
                     </motion.div>
                 )}
 
-                <form onSubmit={handleSubmit} className="space-y-6">
-                    <div>
-                        <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Email Address</label>
-                        <input
-                            type="email"
-                            required
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-5 py-3.5 outline-none focus:border-primary dark:focus:border-primary-light transition-all text-slate-900 dark:text-white shadow-sm"
-                            placeholder="you@example.com"
-                        />
+                <form onSubmit={handleSubmit} className="space-y-5">
+                    <div className="space-y-2">
+                        <label className="text-sm font-bold px-1 opacity-70">Email Address</label>
+                        <div className="relative">
+                            <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                            <input
+                                type="email"
+                                required
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                className="input-field pl-12"
+                                placeholder="name@email.com"
+                            />
+                        </div>
                     </div>
 
-                    <div>
-                        <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Password</label>
+                    <div className="space-y-2">
+                        <label className="text-sm font-bold px-1 opacity-70">Password</label>
                         <div className="relative">
+                            <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                             <input
                                 type={showPassword ? "text" : "password"}
                                 required
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
-                                className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-5 py-3.5 pr-12 outline-none focus:border-primary dark:focus:border-primary-light transition-all text-slate-900 dark:text-white shadow-sm"
+                                className="input-field pl-12 pr-12"
                                 placeholder="••••••••"
                             />
                             <button
                                 type="button"
                                 onClick={() => setShowPassword(!showPassword)}
-                                className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors cursor-pointer"
+                                className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-primary transition-colors"
                             >
-                                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                             </button>
                         </div>
                     </div>
 
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between px-1">
                         <label className="flex items-center gap-2 cursor-pointer group">
-                            <div className="relative flex items-center justify-center w-5 h-5">
-                                <input type="checkbox" className="peer w-5 h-5 appearance-none border-2 border-slate-300 dark:border-slate-600 rounded-md checked:bg-primary checked:border-primary transition-all cursor-pointer" />
-                                <svg className="absolute w-3 h-3 text-white opacity-0 peer-checked:opacity-100 transition-opacity pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                            </div>
-                            <span className="text-sm font-medium text-slate-600 dark:text-slate-400 group-hover:text-slate-800 dark:group-hover:text-slate-200 transition-colors">Remember me</span>
+                             <input type="checkbox" className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 text-primary focus:ring-primary/20" />
+                             <span className="text-sm font-medium opacity-70">Keep me active</span>
                         </label>
-                        <a href="#" className="text-sm font-semibold text-primary hover:text-primary-light transition-colors">Forgot Password?</a>
+                        <Link to="#" className="text-sm font-bold text-primary hover:underline">Forgot password?</Link>
                     </div>
 
                     <motion.button
@@ -111,15 +118,16 @@ const LoginPage = () => {
                         whileTap={{ scale: 0.98 }}
                         disabled={loading}
                         type="submit"
-                        className="w-full bg-primary hover:bg-primary-light text-white font-bold py-4 rounded-xl shadow-[0_4px_20px_rgba(23,93,197,0.4)] transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                        className="btn-primary w-full !py-4 shadow-xl shadow-primary/20"
                     >
                         {loading ? <span className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin"></span> : "Sign In"}
                     </motion.button>
                 </form>
 
-                <p className="mt-8 text-center text-sm font-medium text-slate-600 dark:text-slate-400">
-                    Don't have an account? <Link to="/signup" className="text-primary hover:text-primary-light transition-colors font-bold ml-1">Sign Up</Link>
-                </p>
+                <div className="mt-8 text-center text-sm font-medium">
+                    <span className="opacity-60">New to MindSaarthi?</span>
+                    <Link to="/signup" className="text-primary font-bold ml-2 hover:underline">Create Account</Link>
+                </div>
             </motion.div>
         </div>
     );

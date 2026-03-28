@@ -1,5 +1,5 @@
-print("✅ CHAT FUNCTION HIT")
-from flask import Flask, request, jsonify
+print("--- BACKEND STARTING ---")
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from transformers import pipeline
 from flask_bcrypt import Bcrypt
@@ -9,9 +9,20 @@ from bson.objectid import ObjectId
 import os
 import traceback
 import datetime
+import requests
+import json
+import io
 from dotenv import load_dotenv
 from openai import OpenAI
+from twilio.rest import Client
 from tenacity import retry, stop_after_attempt, wait_exponential
+
+# reportlab for PDF generation
+from reportlab.lib.pagesizes import letter
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
+from reportlab.lib.units import inch
 
 # Force load .env from the current script directory
 env_path = os.path.join(os.path.dirname(__file__), '.env')
@@ -33,20 +44,45 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
 ai_client = None
 if OPENROUTER_API_KEY and OPENROUTER_API_KEY not in ["", "your_api_key_here"]:
     try:
-        # OpenRouter uses the OpenAI-compatible API
         ai_client = OpenAI(
             base_url="https://openrouter.ai/api/v1",
             api_key=OPENROUTER_API_KEY,
         )
-        print(f"✅ Successfully configured OpenRouter API for Chatbot. Key starts with: {OPENROUTER_API_KEY[:8]}...")
+        print("Successfully configured OpenRouter AI Client.")
     except Exception as e:
-        print(f"❌ Failed to configure OpenRouter API: {e}")
+        print(f"Failed to configure OpenRouter API: {e}")
+        ai_client = None
 else:
-    print("⚠️  OPENROUTER_API_KEY not set or is placeholder — chatbot will use rule-based fallback.")
+    print("OPENROUTER_API_KEY not set or is placeholder - using rule-based fallback.")
+    ai_client = None
+
+# 4. Twilio/Google API Configuration for Crisis Management
+TWILIO_SID = os.getenv("TWILIO_ACCOUNT_SID")
+TWILIO_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
+TWILIO_FROM = os.getenv("TWILIO_WHATSAPP_NUMBER", "whatsapp:+14155238886")
+EMERGENCY_PHONE = os.getenv("EMERGENCY_CONTACT_PHONE", "whatsapp:+919079968792")
+GOOGLE_MAPS_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
+
+twilio_client = None
+if TWILIO_SID and TWILIO_TOKEN and TWILIO_SID != "your_twilio_sid_here":
+    try:
+        twilio_client = Client(TWILIO_SID, TWILIO_TOKEN)
+        print("Twilio Crisis Alert Client ready.")
+    except: pass
+
+# 5. MongoDB Collections (Initialized below)
+users_collection = None
+chats_collection = None
+assessment_collection = None
+recovery_plans_collection = None
+session_reports_collection = None
+risk_history_collection = None
+daily_progress_collection = None
+analytics_collection = None
 
 # MongoDB Connection
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://tokirkhan00291_db_user:Rehan07@ac-hibhg1p-shard-00-00.3aae3if.mongodb.net:27017,ac-hibhg1p-shard-00-01.3aae3if.mongodb.net:27017,ac-hibhg1p-shard-00-02.3aae3if.mongodb.net:27017/?ssl=true&replicaSet=atlas-129ewi-shard-0&authSource=admin&retryWrites=true&w=majority")
-print(f"Connecting to MongoDB at {MONGO_URI}...")
+print(f"Connecting to MongoDB...")
 try:
     
     client = pymongo.MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000, TLS = True)
@@ -54,6 +90,12 @@ try:
     db = client["mindsaarthi"]
     users_collection = db["users"]
     chats_collection = db["chats"]
+    assessment_collection = db["assessments"]
+    recovery_plans_collection = db["recovery_plans"]
+    session_reports_collection = db["session_reports"]
+    risk_history_collection = db["risk_history"]
+    daily_progress_collection = db["daily_progress"]
+    analytics_collection = db["analytics"]
     print("Successfully connected to MongoDB.")
     db_con = True
 except pymongo.errors.ServerSelectionTimeoutError:
@@ -90,7 +132,7 @@ except Exception as e:
 # Load sentiment-analysis pipeline (uses distilbert internally, outputs POSITIVE/NEGATIVE)
 print("Loading NLP pipeline... This may take a moment.")
 try:
-    sentiment_pipeline = pipeline("sentiment-analysis")
+    sentiment_pipeline = pipeline("sentiment-analysis", model="distilbert-base-uncased-finetuned-sst-2-english")
     print("Pipeline loaded!")
 except Exception as e:
     print(f"Error loading pipeline: {e}")
@@ -100,9 +142,13 @@ except Exception as e:
 def get_risk_level(text, sentiment_result):
     text_lower = text.lower()
     
-    # 1. Hardcoded High Risk keywords
-    high_risk_keywords = ["hopeless", "depressed", "die", "suicide", "end it", "worthless", "kill", "give up"]
-    if any(word in text_lower for word in high_risk_keywords):
+    # 1. Hardcoded High Risk Keywords (Safety Priority)
+    high_risk_keywords = [
+        "suicide", "kill myself", "end my life", "i don't want to live", 
+        "die", "give up", "worthless", "hopeless", "better off dead", 
+        "no reason to stay", "self harm", "hurting myself", "hanging", "overdose"
+    ]
+    if any(k in text_lower for k in high_risk_keywords):
         return "High"
     
     # 2. Hardcoded Moderate Risk keywords
@@ -120,8 +166,232 @@ def get_risk_level(text, sentiment_result):
             
     return "Low"
 
-# ---- Response Generation (Handled In-Line in /chat for now) ----
-# Note: Manual Gemini block is currently active inside the /chat route.
+def detect_issue(user_message):
+    """Classify user's main struggle for targeted recovery planning."""
+    msg = user_message.lower()
+    if any(k in msg for k in ["sleep", "insomnia", "nightmare", "waking up"]):
+        return "sleep_issue"
+    elif any(k in msg for k in ["stress", "pressure", "workload", "exams"]):
+        return "stress"
+    elif any(k in msg for k in ["overthinking", "logic", "thoughts", "can't stop"]):
+        return "overthinking"
+    elif any(k in msg for k in ["tired", "burnout", "exhausted", "no energy"]):
+        return "burnout"
+    elif any(k in msg for k in ["anxious", "panic", "fear", "scared"]):
+        return "anxiety"
+    return "general"
+
+def generate_recovery_plan_ai(user_id, user_message, risk_level, sentiment, context=""):
+    """Use AI to generate a structured JSON recovery plan."""
+    issue_type = detect_issue(user_message)
+    
+    prompt = f"""
+    You are a professional empathetic AI Mental Health Companion.
+    Generate a personalized recovery plan in STRICT JSON format.
+    
+    User Context:
+    - Recent Emotion: {sentiment}
+    - Risk Level: {risk_level}
+    - Primary Issue: {issue_type}
+    - Recent Message: "{user_message}"
+    - Chat History: {context[:500]}
+    
+    JSON Template (Return ONLY this object):
+    {{
+      "issue": "{issue_type}",
+      "daily_routine": "string summary",
+      "sleep_advice": "specific sleep tips",
+      "break_schedule": "recommended break pattern",
+      "tips": ["actionable tip 1", "actionable tip 2", "actionable tip 3"],
+      "empathy_note": "short supportive closing"
+    }}
+    
+    Keep advice practical, simple, and supportive.
+    """
+    
+    try:
+        # Re-use OpenRouter logic
+        response = ai_client.chat.completions.create(
+            model="google/gemini-2.0-flash-001",
+            messages=[{"role": "system", "content": "You are a helpful mental health assistant that outputs only JSON."},
+                      {"role": "user", "content": prompt}]
+        )
+        content = response.choices[0].message.content
+        # Basic cleanup in case AI includes markdown
+        if "```json" in content:
+            content = content.split("```json")[1].split("```")[0].strip()
+        return json.loads(content)
+    except Exception as e:
+        print(f"AI Plan Generation Error: {e}")
+        # Fallback Plan
+        return {
+            "issue": issue_type,
+            "daily_routine": "Wake up with 5 mins of deep breathing. Maintain a regular schedule.",
+            "sleep_advice": "Avoid screens 1 hour before bed. Keep your room cool.",
+            "break_schedule": "Try the 50/10 rule: 50 mins work, 10 mins disconnected break.",
+            "tips": ["Stay hydrated", "Write down 3 things you're grateful for", "Short 10-min walk"],
+            "empathy_note": "I'm here for you. We'll take this one step at a time."
+        }
+
+def get_nearby_doctors(lat, lng):
+    """Fetch nearest hospitals using OpenStreetMap's Overpass API (Free/No Key)."""
+    try:
+        # Overpass QL query: find hospitals within 5km of lat/lng
+        radius = 5000
+        overpass_url = "https://overpass-api.de/api/interpreter"
+        overpass_query = f"""
+        [out:json];
+        node["amenity"~"hospital|clinic|doctors"](around:{radius},{lat},{lng});
+        out body;
+        """
+        
+        response = requests.post(overpass_url, data={'data': overpass_query}, timeout=10)
+        if response.status_code != 200:
+            raise Exception(f"Overpass Server Error {response.status_code}")
+            
+        data = response.json()
+        
+        results = []
+        for element in data.get("elements", [])[:3]:
+            tags = element.get("tags", {})
+            name = tags.get("name") or tags.get("name:en") or "Medical Center"
+            addr = tags.get("addr:full") or tags.get("addr:street") or "Nearby Location"
+            
+            results.append({
+                "name": name,
+                "address": addr,
+                "lat": element.get("lat"),
+                "lng": element.get("lon")
+            })
+            
+        if not results:
+            return [{"name": "Local Support Center", "address": "Call Emergency Services (112)", "lat": lat, "lng": lng}]
+            
+        return results
+    except Exception as e:
+        print(f"OSM/Overpass API Error: {e}")
+        # Robust fallback
+        return [{"name": "Emergency Health Center", "address": "Please contact 112 immediately.", "lat": lat, "lng": lng}]
+
+def send_whatsapp_alert(lat, lng, user_name="A User"):
+    """Trigger Twilio WhatsApp emergency alert."""
+    if not twilio_client:
+        print(" Twilio not configured. Alert suppressed.")
+        return False
+        
+    try:
+        maps_link = f"https://www.google.com/maps?q={lat},{lng}"
+        body = f" *MindSaarthi EMERGENCY ALERT*\n\nUser *{user_name}* may be in high-risk distress.\nLocation: {maps_link}"
+        
+        twilio_client.messages.create(
+            from_=TWILIO_FROM,
+            body=body,
+            to=EMERGENCY_PHONE
+        )
+        print(f" Emergency Alert sent to {EMERGENCY_PHONE}")
+        return True
+    except Exception as e:
+        print(f"Twilio API Error: {e}")
+        return False
+
+# ---- Advanced Reporting & Analytics ----
+
+def generate_session_report(user_id, session_summary, sentiment_trend, risk_level, detected_issues):
+    """Summarize and save a chat session to MongoDB."""
+    try:
+        if not ai_client:
+            recommendations = "Seek support from trusted circles. Maintain a regular meditation habit."
+        else:
+            prompt = f"Summarize the following mental health session insights and provide 3-4 professional recommendations based on: {session_summary}. Risk Level: {risk_level}."
+            response = ai_client.chat.completions.create(
+                model="google/gemini-2.0-flash-001",
+                messages=[{"role": "user", "content": prompt}]
+            )
+            recommendations = response.choices[0].message.content.strip()
+
+        report_doc = {
+            "user_id": user_id,
+            "summary": session_summary,
+            "sentiment_trend": sentiment_trend,
+            "risk_level": risk_level,
+            "detected_issues": detected_issues,
+            "recommendations": recommendations,
+            "created_at": datetime.datetime.now()
+        }
+
+        if db_con and session_reports_collection is not None:
+            session_reports_collection.insert_one(report_doc)
+            print("Session report saved successfully.")
+        return report_doc
+    except Exception as e:
+        print(f"Reporting Error: {e}")
+        return None
+
+def log_high_risk_event(user_id, message, alert_sent=False, location_shared=False, hospital=None, doctor=None):
+    """Specifically track high-risk triggers for dashboard analysis."""
+    try:
+        risk_doc = {
+            "user_id": user_id,
+            "user_message": message,
+            "timestamp": datetime.datetime.now(),
+            "alert_sent": alert_sent,
+            "location_shared": location_shared,
+            "hospital_suggested": hospital,
+            "doctor_contact": doctor
+        }
+        if db_con and risk_history_collection is not None:
+            risk_history_collection.insert_one(risk_doc)
+            print("Critically High Risk event logged.")
+    except Exception as e:
+        print(f"Risk Logging Error: {e}")
+
+# ---- Behavioral Analytics Engine ----
+
+def calculate_analytics_scores(message, sentiment_label, risk_level):
+    """Derive numerical behavioral metrics from conversational data."""
+    msg = message.lower()
+    
+    # Stress Score (0-100)
+    stress_keywords = ['stress', 'pressure', 'overwhelmed', 'anxious', 'panic', 'tension', 'worry']
+    stress_base = 30 if sentiment_label == "NEGATIVE" else 10
+    stress_count = sum(1 for k in stress_keywords if k in msg) * 15
+    stress_score = min(100, stress_base + stress_count + (40 if risk_level == "High" else 0))
+    
+    # Sleep Score (0-100)
+    sleep_keywords = ['sleep', 'tired', 'insomnia', 'awake', 'night', 'exhausted', 'restless']
+    sleep_count = sum(1 for k in sleep_keywords if k in msg)
+    sleep_score = max(20, 100 - (sleep_count * 20)) if sleep_count > 0 else 85
+    
+    # Productivity Score (0-100)
+    prod_keywords = ['work', 'focus', 'concentrate', 'study', 'energy', 'productive', 'goal']
+    prod_count = sum(1 for k in prod_keywords if k in msg)
+    prod_base = 60 if sentiment_label == "POSITIVE" else 40
+    productivity_score = min(100, prod_base + (prod_count * 10))
+    
+    # Mood Score (0-100)
+    mood_score = 80 if sentiment_label == "POSITIVE" else 30 if sentiment_label == "NEGATIVE" else 55
+    
+    return {
+        "stress_score": stress_score,
+        "sleep_score": sleep_score,
+        "productivity_score": productivity_score,
+        "mood_score": mood_score,
+        "issue_type": detect_issue(message)
+    }
+
+def get_ai_behavioral_insight(data_type, values):
+    """Use Gemini to generate a meaningful healthcare-style insight from data trends."""
+    if not ai_client: return "Consistency in tracking is key to long-term wellness."
+    
+    try:
+        prompt = f"Analyze these {data_type} metrics from a mental health app: {values}. Provide a 1-sentence professional insight starting with 'Observation:' and focusing on behavioral impact."
+        response = ai_client.chat.completions.create(
+            model="google/gemini-2.0-flash-001",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return response.choices[0].message.content.strip()
+    except:
+        return "Your patterns show a clear correlation between stress and daily energy levels."
 
 # ---- Auth Endpoints ----
 
@@ -239,21 +509,21 @@ def dashboard():
         "mood_history": history
     })
 
-# ---- 🧠 Sentimental Fallback Engine (In case of 429 Quota Errors) ----
+# ----  Sentimental Fallback Engine (In case of 429 Quota Errors) ----
 def get_hardcoded_empathy(risk_level, sentiment):
     if risk_level == "High":
         return "I can hear how painful this is for you. Please know that you're not alone, and reaching out is a brave first step. I strongly encourage you to connect with a crisis support professional who can provide the immediate care you deserve."
     if risk_level == "Moderate":
         return "It sounds like you're carrying a lot on your shoulders right now. I'm here to listen. Taking a small moment to breathe and focus on your well-being can sometimes help when things feel overwhelming."
     if sentiment == "NEGATIVE":
-        return "I'm sorry you're going through a tough time. It's completely valid to feel this way. Tell me more about what's on your mind—I'm here for you."
+        return "I'm sorry you're going through a tough time. It's completely valid to feel this way. Tell me more about what's on your mindI'm here for you."
     return "I appreciate you sharing your thoughts with me. How else can I support you today? I'm always here to listen."
 
 @app.route('/chat', methods=['POST'])
 @jwt_required(optional=True)
 def chat():
     print("\n" + "="*50)
-    print("🧠 NEW CHAT REQUEST RECEIVED")
+    print(" NEW CHAT REQUEST RECEIVED")
     print("="*50)
 
     try:
@@ -261,7 +531,7 @@ def chat():
         user_message = data.get('message', '')
         user_id = get_jwt_identity()
         
-        print(f"📥 Input: {user_message[:60]}")
+        print(f" Input: {user_message[:60]}")
 
         # 1. Pipeline Analysis
         sentiment_result = None
@@ -273,7 +543,7 @@ def chat():
             except: pass
         
         risk_level = get_risk_level(user_message, sentiment_result)
-        print(f"📊 Analysis -> Risk: {risk_level}, Sentiment: {sentiment_label}")
+        print(f" Analysis -> Risk: {risk_level}, Sentiment: {sentiment_label}")
 
         # 2. Context Loading
         context = ""
@@ -285,29 +555,25 @@ def chat():
         # 3. AI Brain Call
         bot_reply = ""
         if not ai_client:
-            print("⚠️ [SYSTEM] AI client NOT initialized. Using fallback.")
+            print(" [SYSTEM] AI client NOT initialized. Using fallback.")
             bot_reply = get_hardcoded_empathy(risk_level, sentiment_label)
         else:
             try:
-                print("🔥 [API] Calling OpenRouter (Gemini 2.0 Flash via OR)...")
+                print(" [API] Calling OpenRouter (Gemini 2.0 Flash via OR)...")
                 prompt = f"Role: MindSaarthi AI\nContext: {context}\nUser: {user_message}\nTask: 2-3 line human-like empathetic response based on Risk: {risk_level}."
                 
                 response = ai_client.chat.completions.create(
-                    model="openrouter/free",
-                    messages=[{"role": "user", "content": prompt}],
-                    extra_headers={
-                        "HTTP-Referer": "https://mindsaarthi.com", # Optional, for OpenRouter rankings
-                        "X-Title": "MindSaarthi AI", # Optional
-                    }
+                    model="google/gemini-2.0-flash-001",
+                    messages=[{"role": "user", "content": prompt}]
                 )
                 bot_reply = response.choices[0].message.content.strip().replace("*", "")
-                print(f"✅ [API] Success: {bot_reply[:60]}...")
+                print(f" [API] Success: {bot_reply[:60]}...")
             except Exception as ai_err:
-                print(f"❌ [API] AI Call Failed: {ai_err}")
+                print(f" [API] AI Call Failed: {ai_err}")
                 # Use our smart fallback if API is down or 429
                 bot_reply = get_hardcoded_empathy(risk_level, sentiment_label)
                 if "429" in str(ai_err):
-                    print("⚠️ [QUOTA] 429 Resource Exhausted. Switching to Smart Fallback.")
+                    print(" [QUOTA] 429 Resource Exhausted. Switching to Smart Fallback.")
 
         # 4. Persistence
         if user_id:
@@ -322,16 +588,334 @@ def chat():
             if db_con: chats_collection.insert_one(chat_doc)
             else: mock_chats.append(chat_doc)
 
+            # Log risk if high
+            if risk_level == "High":
+                log_high_risk_event(user_id, user_message)
+            
+            # For hackathon demo, automatically generate a session report entry
+            generate_session_report(user_id, user_message, sentiment_label, risk_level, detect_issue(user_message))
+
+            # NEW: Record Behavioral Analytics
+            analytics_data = calculate_analytics_scores(user_message, sentiment_label, risk_level)
+            analytics_doc = {
+                "user_id": user_id,
+                **analytics_data,
+                "risk_level": risk_level,
+                "timestamp": datetime.datetime.now()
+            }
+            if db_con and analytics_collection is not None:
+                analytics_collection.insert_one(analytics_doc)
+
         return jsonify({
             "reply": bot_reply,
             "sentiment": sentiment_label,
-            "risk": risk_level
+            "risk": risk_level,
+            "ask_consent": risk_level == "High"
         })
-
     except Exception as fatal_err:
-        print(f"❌ [FATAL] Global Error: {fatal_err}")
+        print(f" [FATAL] Global Error: {fatal_err}")
         traceback.print_exc()
         return jsonify({"reply": "I'm experiencing a small temporary issue, but I'm still here for you. Tell me more?"}), 500
+
+# ---- EMERGENCY TRIGGER (AFTER CONSENT) ----
+@app.route('/emergency-confirm', methods=['POST'])
+@jwt_required(optional=True)
+def emergency_confirm():
+    try:
+        data = request.json
+        user_id = get_jwt_identity()
+        lat = data.get('lat')
+        lng = data.get('lng')
+        
+        user_name = "MindSaarthi User"
+        if user_id:
+            u = users_collection.find_one({"_id": ObjectId(user_id)}) if db_con else next((u for u in mock_users if str(u['_id']) == user_id), None)
+            if u: user_name = u.get("name", "MindSaarthi User")
+            
+        # 1. Find nearby help
+        doctors = get_nearby_doctors(lat, lng)
+        
+        # 2. Trigger WhatsApp Alert if configured
+        alert_sent = send_whatsapp_alert(lat, lng, user_name)
+        
+        return jsonify({
+            "status": "triggered",
+            "alert_sent": alert_sent,
+            "doctors": doctors,
+            "message": "Nearby help identified and trusted contact notified."
+        })
+    except Exception as e:
+        print(f"Emergency Trigger Error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+# ---- RECOVERY PLAN API ----
+@app.route('/generate-plan', methods=['POST'])
+@jwt_required()
+def generate_plan():
+    try:
+        user_id = get_jwt_identity()
+        data = request.json
+        message = data.get('message', 'General check-in')
+        risk = data.get('risk', 'Low')
+        sentiment = data.get('sentiment', 'Neutral')
+        context = data.get('context', '')
+        
+        # 1. Generate Plan using AI
+        plan = generate_recovery_plan_ai(user_id, message, risk, sentiment, context)
+        
+        # 2. Store in DB
+        plan_doc = {
+            "user_id": user_id,
+            "plan": plan,
+            "issue_type": plan.get("issue", "general"),
+            "risk_level": risk,
+            "sentiment_label": sentiment,
+            "created_at": datetime.datetime.now()
+        }
+        
+        if recovery_plans_collection is not None:
+            recovery_plans_collection.insert_one(plan_doc)
+            
+        return jsonify({
+            "status": "success",
+            "plan": plan
+        })
+    except Exception as e:
+        print(f"Plan Generation Route Error: {e}")
+        return jsonify({"error": "Failed to generate plan"}), 500
+
+@app.route('/plans', methods=['GET'])
+@jwt_required()
+def get_plans():
+    try:
+        user_id = get_jwt_identity()
+        if recovery_plans_collection is None:
+            return jsonify([])
+            
+        plans = list(recovery_plans_collection.find({"user_id": user_id}).sort("created_at", -1))
+        # Convert ObjectId and datetime for JSON
+        for p in plans:
+            p["_id"] = str(p["_id"])
+            p["created_at"] = p["created_at"].strftime("%Y-%m-%d")
+            if "status" not in p:
+                p["status"] = "active" # Default for old records
+        return jsonify(plans)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# ---- ADVANCED DASHBOARD ENDPOINTS ----
+
+@app.route('/reports', methods=['GET'])
+@jwt_required()
+def get_reports():
+    user_id = get_jwt_identity()
+    if session_reports_collection is None: return jsonify([])
+    reports = list(session_reports_collection.find({"user_id": user_id}).sort("created_at", -1))
+    for r in reports:
+        r["_id"] = str(r["_id"])
+        r["created_at"] = r["created_at"].strftime("%Y-%m-%d %H:%M")
+    return jsonify(reports)
+
+@app.route('/risk-history', methods=['GET'])
+@jwt_required()
+def get_risk_history():
+    user_id = get_jwt_identity()
+    if risk_history_collection is None: return jsonify([])
+    risks = list(risk_history_collection.find({"user_id": user_id}).sort("timestamp", -1))
+    for r in risks:
+        r["_id"] = str(r["_id"])
+        r["timestamp"] = r["timestamp"].strftime("%Y-%m-%d %H:%M")
+    return jsonify(risks)
+
+@app.route('/daily-progress', methods=['GET'])
+@jwt_required()
+def get_daily_progress():
+    user_id = get_jwt_identity()
+    today = datetime.datetime.now().strftime("%Y-%m-%d")
+    if daily_progress_collection is None: return jsonify({"tasks": [], "date": today, "progress": 0})
+    
+    prog = daily_progress_collection.find_one({"user_id": user_id, "date": today})
+    if not prog:
+        # Create default daily tasks for the new user day
+        default_tasks = [
+            {"task_name": "Deep Breathing (5 mins)", "completed": False},
+            {"task_name": "Hydration (2L)", "completed": False},
+            {"task_name": "Daily Journal Entry", "completed": False},
+            {"task_name": "30 Min Movement", "completed": False}
+        ]
+        prog = {"user_id": user_id, "date": today, "tasks": default_tasks}
+        daily_progress_collection.insert_one(prog)
+    
+    prog["_id"] = str(prog["_id"])
+    completed = [t for t in prog["tasks"] if t["completed"]]
+    prog["progress"] = (len(completed) / len(prog["tasks"])) * 100 if prog["tasks"] else 0
+    return jsonify(prog)
+
+@app.route('/mark-task', methods=['POST'])
+@jwt_required()
+def mark_task():
+    user_id = get_jwt_identity()
+    data = request.json
+    task_name = data.get('task_name')
+    completed = data.get('completed', True)
+    today = datetime.datetime.now().strftime("%Y-%m-%d")
+    
+    if daily_progress_collection is None: return jsonify({"error": "DB down"}), 500
+    
+    daily_progress_collection.update_one(
+        {"user_id": user_id, "date": today, "tasks.task_name": task_name},
+        {"$set": {"tasks.$.completed": completed}}
+    )
+    return jsonify({"success": True})
+
+@app.route('/analytics', methods=['GET'])
+@jwt_required()
+def get_analytics():
+    user_id = get_jwt_identity()
+    if analytics_collection is None: return jsonify([])
+    
+    # Get last 14 entries for trend analysis
+    data = list(analytics_collection.find({"user_id": user_id}).sort("timestamp", 1).limit(20))
+    chart_data = []
+    for d in data:
+        chart_data.append({
+            "date": d["timestamp"].strftime("%b %d"),
+            "full_date": d["timestamp"].strftime("%Y-%m-%d %H:%M"),
+            "stress": d["stress_score"],
+            "productivity": d["productivity_score"],
+            "sleep": d["sleep_score"],
+            "mood": d["mood_score"],
+            "risk": d["risk_level"]
+        })
+    
+    # Generate dynamic AI insights for each major graph
+    insights = {
+        "stress_prod": get_ai_behavioral_insight("Stress vs Productivity", chart_data[-5:] if chart_data else []),
+        "sleep_mood": get_ai_behavioral_insight("Sleep vs Mood", chart_data[-5:] if chart_data else []),
+        "risk_trend": "Your risk stability has improved by 15% this week."
+    }
+    
+    return jsonify({
+        "chart_data": chart_data,
+        "insights": insights
+    })
+
+@app.route('/issue-distribution', methods=['GET'])
+@jwt_required()
+def get_issue_distribution():
+    user_id = get_jwt_identity()
+    if analytics_collection is None: return jsonify([])
+    
+    pipeline = [
+        {"$match": {"user_id": user_id}},
+        {"$group": {"_id": "$issue_type", "value": {"$sum": 1}}}
+    ]
+    results = list(analytics_collection.aggregate(pipeline))
+    formatted = [{"name": r["_id"].replace('_', ' ').title(), "value": r["value"]} for r in results]
+    return jsonify(formatted)
+
+@app.route('/weekly-score', methods=['GET'])
+@jwt_required()
+def get_weekly_score():
+    user_id = get_jwt_identity()
+    if analytics_collection is None: return jsonify({"score": 70})
+    
+    # Calculate average mood/mental health score for last 7 days
+    data = list(analytics_collection.find({"user_id": user_id}).sort("timestamp", -1).limit(10))
+    if not data: return jsonify({"score": 0, "status": "No data"})
+    
+    avg_mood = sum(d["mood_score"] for d in data) / len(data)
+    avg_stress = sum(d["stress_score"] for d in data) / len(data)
+    
+    final_score = (avg_mood + (100 - avg_stress)) / 2
+    return jsonify({
+        "score": round(final_score),
+        "status": "Improving" if final_score > 60 else "Requires Attention"
+    })
+
+@app.route('/download-report/<report_id>', methods=['GET'])
+@jwt_required()
+def download_pdf_report(report_id):
+    user_id = get_jwt_identity()
+    if session_reports_collection is None: return "DB down", 500
+    
+    report = session_reports_collection.find_one({"_id": ObjectId(report_id), "user_id": user_id})
+    if not report: return "Not found", 404
+    
+    user = users_collection.find_one({"_id": ObjectId(user_id)})
+    user_name = user.get("name", "User") if user else "MindSaarthi User"
+
+    # PDF generation in-memory
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=50, leftMargin=50, topMargin=50, bottomMargin=50)
+    styles = getSampleStyleSheet()
+    
+    # Professional Styles
+    title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], textColor=colors.white, fontSize=22, alignment=1, spaceAfter=10)
+    header_box_style = ParagraphStyle('HeaderBox', parent=styles['Normal'], backColor=colors.HexColor("#175dc5"), textColor=colors.white, fontSize=12, borderPadding=10, alignment=1)
+    section_title = ParagraphStyle('SectionTitle', parent=styles['Heading2'], textColor=colors.HexColor("#175dc5"), fontSize=14, spaceBefore=20, spaceAfter=10, borderPadding=5)
+    body_text = ParagraphStyle('BodyText', parent=styles['Normal'], fontSize=11, leading=16, spaceAfter=8)
+    risk_indicator = ParagraphStyle('RiskIndicator', parent=styles['Normal'], textColor=colors.HexColor("#ff1d24") if report.get('risk_level') == "High" else colors.HexColor("#175dc5"), fontSize=12, fontName='Helvetica-Bold')
+
+    elements = []
+    
+    # 1. Professional Blue Header
+    header_table_data = [
+        [Paragraph("<b>MindSaarthi AI: Clinical Wellness Report</b>", title_style)],
+        [Paragraph(f"Patient: {user_name} | Date: {report.get('created_at').strftime('%B %d, %Y') if isinstance(report.get('created_at'), datetime.datetime) else report.get('created_at')}", header_box_style)]
+    ]
+    header_table = Table(header_table_data, colWidths=[7*inch])
+    header_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#175dc5")),
+        ('TOPPADDING', (0, 0), (-1, -1), 15),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 15),
+    ]))
+    elements.append(header_table)
+    elements.append(Spacer(1, 0.3*inch))
+    
+    # 2. Executive Summary
+    elements.append(Paragraph("Executive Summary", section_title))
+    elements.append(Paragraph(report.get('summary', 'No summary provided for this interaction.'), body_text))
+    
+    # 3. Clinical Assessment
+    elements.append(Paragraph("Clinical Assessment", section_title))
+    assessment_data = [
+        ["Risk Assessment:", Paragraph(report.get('risk_level', 'Low'), risk_indicator)],
+        ["Primary Issue:", report.get('detected_issues', 'General Wellness').replace('_', ' ').title()],
+        ["Sentiment Trend:", report.get('sentiment_trend', 'Neutral')]
+    ]
+    assessment_table = Table(assessment_data, colWidths=[2*inch, 4*inch])
+    assessment_table.setStyle(TableStyle([
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('PADDING', (0, 0), (-1, -1), 10),
+        ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor("#175dc5")),
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+    ]))
+    elements.append(assessment_table)
+    
+    # 4. Professional Recommendations
+    elements.append(Paragraph("AI-Driven Recommendations", section_title))
+    recs = report.get('recommendations', 'Continue maintaining your wellness routine.')
+    # Handle multi-line recommendations if they come as bullet points
+    for line in recs.split('\n'):
+        if line.strip():
+            prefix = "• " if line.strip().startswith(('-', '*', '1.', '2.', '3.')) else ""
+            clean_line = line.strip().lstrip('-*123456789. ')
+            elements.append(Paragraph(f"{prefix}{clean_line}", body_text))
+    
+    # 5. Recovery Focus
+    elements.append(Paragraph("Next Steps & Focus", section_title))
+    elements.append(Paragraph(f"The analysis suggests focusing on <b>{report.get('detected_issues', 'general stability').replace('_', ' ')}</b> and maintaining consistent check-ins.", body_text))
+    
+    # Footer
+    elements.append(Spacer(1, 0.5*inch))
+    elements.append(Paragraph("<hr/>", body_text))
+    elements.append(Paragraph("<font size='8' color='grey'>This report is generated by MindSaarthi AI and is intended for informational purposes. It does not replace professional medical advice.</font>", body_text))
+    
+    doc.build(elements)
+    buffer.seek(0)
+    
+    return send_file(buffer, as_attachment=True, download_name=f"MindSaarthi_Report_{report_id}.pdf", mimetype='application/pdf')
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

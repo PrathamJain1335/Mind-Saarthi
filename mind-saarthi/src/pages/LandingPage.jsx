@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTheme } from '../ThemeContext';
 import Navbar from '../components/Navbar';
 import HeroSection from '../components/HeroSection';
 import HowItWorks from '../components/HowItWorks';
@@ -11,10 +12,12 @@ import CTASection from '../components/CTASection';
 import Footer from '../components/Footer';
 import ChatBotWidget from '../components/ChatBotWidget';
 
-const LandingPage = ({ darkMode, toggleTheme }) => {
+const LandingPage = () => {
+    const { darkMode } = useTheme();
+    
     return (
-        <div className="overflow-x-hidden">
-            <Navbar darkMode={darkMode} toggleTheme={toggleTheme} />
+        <div className={`overflow-x-hidden min-h-screen transition-colors duration-500 ${darkMode ? 'bg-background-dark text-white' : 'bg-background-light text-slate-900'}`}>
+            <Navbar />
             <main>
                 <HeroSection />
                 <HowItWorks />
