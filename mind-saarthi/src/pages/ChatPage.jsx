@@ -168,6 +168,7 @@ const ChatPage = () => {
                 text:resp.data.reply, 
                 risk:resp.data.risk, 
                 sentiment:resp.data.sentiment, 
+                suggestion: resp.data.suggestion,
                 timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
             };
             setMessages(prev => [...prev, botMsg]);

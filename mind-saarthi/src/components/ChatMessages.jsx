@@ -69,6 +69,25 @@ const ChatMessages = ({ messages, isTyping, scrollRef }) => {
                                 }`}>
                                     <p className="text-[15px] leading-relaxed whitespace-pre-wrap">{msg.text}</p>
 
+                                    {/* Smart Coping Suggestion */}
+                                    {msg.type === 'bot' && msg.suggestion && (
+                                        <motion.div 
+                                            initial={{ opacity: 0, y: 10 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            className="mt-4 p-3.5 bg-primary/5 dark:bg-white/5 border border-primary/20 dark:border-white/10 rounded-2xl flex items-start gap-3 shadow-sm"
+                                        >
+                                            <div className="p-1.5 bg-primary/10 rounded-lg text-primary">
+                                                <Heart size={14} fill="currentColor" className="opacity-80" />
+                                            </div>
+                                            <div className="flex-1">
+                                                <h4 className="text-[10px] font-black uppercase tracking-widest text-primary mb-1">MindSaarthi Tip</h4>
+                                                <p className="text-[13px] font-semibold leading-relaxed leading-tight text-slate-600 dark:text-slate-300">
+                                                    {msg.suggestion}
+                                                </p>
+                                            </div>
+                                        </motion.div>
+                                    )}
+
                                     {/* Risk/Sentiment Badges for Bot */}
                                     {msg.type === 'bot' && (msg.risk || msg.sentiment) && (
                                         <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center gap-2">

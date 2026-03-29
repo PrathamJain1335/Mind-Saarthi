@@ -7,6 +7,8 @@ import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
 import DashboardPage from './pages/DashboardPage';
 import ChatPage from './pages/ChatPage';
+import GroupChatPage from './pages/GroupChatPage';
+import VoiceCallPage from './pages/VoiceCallPage';
 import { AnimatePresence } from 'framer-motion';
 
 function AppRoutes() {
@@ -18,6 +20,8 @@ function AppRoutes() {
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/chat" element={<ChatPage />} />
+        <Route path="/group-chat" element={<GroupChatPage />} />
+        <Route path="/call" element={<VoiceCallPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AnimatePresence>

@@ -24,6 +24,11 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
 from reportlab.lib.units import inch
 
+import base64
+from gtts import gTTS
+from flask_socketio import SocketIO, emit, join_room, leave_room
+import random
+
 # Force load .env from the current script directory
 env_path = os.path.join(os.path.dirname(__file__), '.env')
 load_dotenv(dotenv_path=env_path)
@@ -32,6 +37,20 @@ print(f"DEBUG: OPENROUTER_API_KEY value: {os.getenv('OPENROUTER_API_KEY')[:5] if
 
 app = Flask(__name__)
 CORS(app) # Enable CORS for frontend
+socketio = SocketIO(app, cors_allowed_origins="*")
+
+SOOTHING_NAMES = [
+    "Quiet Lotus", "Brave Willow", "Zen Panda", "Mindful Breeze",
+    "Hopeful Star", "Calm River", "Peaceful Dove", "Bold Sparrow",
+    "Gentle Oak", "Radiant Sun", "Inner Peak", "Soft Moon",
+    "Golden Leaf", "Blue Whale", "Wise Owl", "Forest Guardian"
+]
+
+def get_anonymous_name(user_id=None):
+    if user_id:
+        idx = int(str(user_id)[-1], 16) % len(SOOTHING_NAMES)
+        return SOOTHING_NAMES[idx]
+    return random.choice(SOOTHING_NAMES)
 
 # Configure Settings
 app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY", "mindsaarthi-super-secret-key-2026")
@@ -96,6 +115,9 @@ try:
     risk_history_collection = db["risk_history"]
     daily_progress_collection = db["daily_progress"]
     analytics_collection = db["analytics"]
+    personality_collection = db["personality_profiles"]
+    emotional_trend_collection = db["emotional_trend"]
+    crisis_events_collection = db["crisis_events"]
     print("Successfully connected to MongoDB.")
     db_con = True
 except pymongo.errors.ServerSelectionTimeoutError:
@@ -169,17 +191,73 @@ def get_risk_level(text, sentiment_result):
 def detect_issue(user_message):
     """Classify user's main struggle for targeted recovery planning."""
     msg = user_message.lower()
+    if any(k in msg for k in ["kill", "die", "end it", "suicide", "harm"]):
+        return "crisis"
     if any(k in msg for k in ["sleep", "insomnia", "nightmare", "waking up"]):
         return "sleep_issue"
     elif any(k in msg for k in ["stress", "pressure", "workload", "exams"]):
         return "stress"
-    elif any(k in msg for k in ["overthinking", "logic", "thoughts", "can't stop"]):
+    elif any(k in msg for k in ["overthinking", "logic", "thoughts", "can't stop", "what if"]):
         return "overthinking"
-    elif any(k in msg for k in ["tired", "burnout", "exhausted", "no energy"]):
+    elif any(k in msg for k in ["tired", "burnout", "exhausted", "no energy", "drained"]):
         return "burnout"
+    elif any(k in msg for k in ["alone", "lonely", "no one", "isolated"]):
+        return "loneliness"
     elif any(k in msg for k in ["anxious", "panic", "fear", "scared"]):
         return "anxiety"
     return "general"
+
+def get_coping_suggestion(issue_type):
+    """Smart Rule-Based Coping Engine."""
+    suggestions = {
+        "crisis": "Please reach out to a crisis helpline immediately. You are not alone. Focus on your breathing and stay with me.",
+        "sleep_issue": "Try the 4-7-8 breathing technique: inhale for 4, hold for 7, exhale for 8. Avoid all screens now.",
+        "stress": "Try a quick 'Brain Dump': write down everything on your mind for 2 minutes, then let it go.",
+        "overthinking": "Try naming 5 things you can see, 4 you can touch, and 3 you can hear right now.",
+        "burnout": "Permit yourself to do 'nothing' for 15 minutes. Pure rest, no guilt.",
+        "loneliness": "Think of one person you've had a positive interaction with, even if it was small. Or, let's keep talking.",
+        "anxiety": "Gently place your hand on your chest and feel the rhythm of your heart. You are safe in this moment.",
+        "general": "Take a deep breath and remember that it's okay to feel however you're feeling right now."
+    }
+    return suggestions.get(issue_type, suggestions["general"])
+
+def update_personality_profile(user_id, analytics_data):
+    """Aggregate conversational data into a persistent persona profile."""
+    if not db_con or personality_collection is None: return
+    
+    try:
+        # Fetch last 10 analytics entries
+        history = list(analytics_collection.find({"user_id": user_id}).sort("timestamp", -1).limit(10))
+        if not history: return
+        
+        avg_stress = sum(h["stress_score"] for h in history) / len(history)
+        avg_mood = sum(h["mood_score"] for h in history) / len(history)
+        
+        # Determine dominant emotion/issue
+        issues = [h["issue_type"] for h in history if h["issue_type"] != "general"]
+        dominant_issue = max(set(issues), key=issues.count) if issues else "developing"
+        
+        # Track active hours
+        now = datetime.datetime.now()
+        hour = now.hour
+        time_period = "morning" if 5 <= hour < 12 else "afternoon" if 12 <= hour < 18 else "evening" if 18 <= hour < 22 else "night"
+        
+        profile = {
+            "user_id": user_id,
+            "avg_stress": round(avg_stress),
+            "avg_mood": round(avg_mood),
+            "dominant_issue": dominant_issue,
+            "peak_stress_period": time_period,
+            "last_updated": now
+        }
+        
+        personality_collection.update_one(
+            {"user_id": user_id},
+            {"$set": profile},
+            upsert=True
+        )
+    except Exception as e:
+        print(f"Profile Update Error: {e}")
 
 def generate_recovery_plan_ai(user_id, user_message, risk_level, sentiment, context=""):
     """Use AI to generate a structured JSON recovery plan."""
@@ -296,7 +374,7 @@ def send_whatsapp_alert(lat, lng, user_name="A User"):
 
 # ---- Advanced Reporting & Analytics ----
 
-def generate_session_report(user_id, session_summary, sentiment_trend, risk_level, detected_issues):
+def generate_session_report(user_id, session_summary, sentiment_trend, risk_level, detected_issues, session_type="Chat"):
     """Summarize and save a chat session to MongoDB."""
     try:
         if not ai_client:
@@ -311,6 +389,7 @@ def generate_session_report(user_id, session_summary, sentiment_trend, risk_leve
 
         report_doc = {
             "user_id": user_id,
+            "session_type": session_type,
             "summary": session_summary,
             "sentiment_trend": sentiment_trend,
             "risk_level": risk_level,
@@ -530,8 +609,9 @@ def chat():
         data = request.json
         user_message = data.get('message', '')
         user_id = get_jwt_identity()
+        mode = data.get('mode', 'normal') # 'normal' or 'therapy'
         
-        print(f" Input: {user_message[:60]}")
+        print(f" Input: {user_message[:60]} | Mode: {mode}")
 
         # 1. Pipeline Analysis
         sentiment_result = None
@@ -543,39 +623,49 @@ def chat():
             except: pass
         
         risk_level = get_risk_level(user_message, sentiment_result)
-        print(f" Analysis -> Risk: {risk_level}, Sentiment: {sentiment_label}")
+        issue_type = detect_issue(user_message)
+        coping_tip = get_coping_suggestion(issue_type)
+        
+        print(f" Analysis -> Risk: {risk_level}, Sentiment: {sentiment_label}, Issue: {issue_type}")
 
-        # 2. Context Loading
+        # 2. Context & Personality Loading
         context = ""
+        personality_context = ""
         if user_id:
-            user_history = list(chats_collection.find({"user_id": user_id}).sort("timestamp", -1).limit(5))[::-1]
+            user_history = list(chats_collection.find({"user_id": user_id}).sort("timestamp", -1).limit(7))[::-1]
             for c in user_history:
                 context += f"User: {c.get('user_message', '')}\nMindSaarthi: {c.get('bot_reply', '')}\n"
+            
+            profile = personality_collection.find_one({"user_id": user_id})
+            if profile:
+                personality_context = f"User Pattern: Tends to feel {profile.get('dominant_issue')} during the {profile.get('peak_stress_period')}. Current Avg Mood: {profile.get('avg_mood')}/100."
 
         # 3. AI Brain Call
         bot_reply = ""
         if not ai_client:
-            print(" [SYSTEM] AI client NOT initialized. Using fallback.")
             bot_reply = get_hardcoded_empathy(risk_level, sentiment_label)
         else:
             try:
-                print(" [API] Calling OpenRouter (Gemini 2.0 Flash via OR)...")
-                prompt = f"Role: MindSaarthi AI\nContext: {context}\nUser: {user_message}\nTask: 2-3 line human-like empathetic response based on Risk: {risk_level}."
+                system_prompt = "You are MindSaarthi, a personalized AI Mental Health Assistant."
+                if mode == "therapy":
+                    system_prompt += " Act as a professional therapist. Ask deep, reflective questions. Speak slowly and thoughtfully. Focus on root causes."
+                else:
+                    system_prompt += " Be empathetic, conversational, and direct. Use short, helpful responses."
+                
+                prompt = f"System Info: {personality_context}\nContext: {context}\nUser: {user_message}\nTask: Respond as MindSaarthi. Risk: {risk_level}. Issue Detected: {issue_type}."
                 
                 response = ai_client.chat.completions.create(
                     model="google/gemini-2.0-flash-001",
-                    messages=[{"role": "user", "content": prompt}]
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": prompt}
+                    ]
                 )
                 bot_reply = response.choices[0].message.content.strip().replace("*", "")
-                print(f" [API] Success: {bot_reply[:60]}...")
             except Exception as ai_err:
-                print(f" [API] AI Call Failed: {ai_err}")
-                # Use our smart fallback if API is down or 429
                 bot_reply = get_hardcoded_empathy(risk_level, sentiment_label)
-                if "429" in str(ai_err):
-                    print(" [QUOTA] 429 Resource Exhausted. Switching to Smart Fallback.")
 
-        # 4. Persistence
+        # 4. Resilience & Analytics Update
         if user_id:
             chat_doc = {
                 "user_id": user_id,
@@ -583,12 +673,32 @@ def chat():
                 "bot_reply": bot_reply,
                 "sentiment": sentiment_label,
                 "risk": risk_level,
+                "issue_type": issue_type,
+                "mode": mode,
                 "timestamp": datetime.datetime.now()
             }
             if db_con: chats_collection.insert_one(chat_doc)
-            else: mock_chats.append(chat_doc)
+            
+            # Record Analytics
+            analytics_data = calculate_analytics_scores(user_message, sentiment_label, risk_level)
+            analytics_doc = {
+                "user_id": user_id,
+                **analytics_data,
+                "risk_level": risk_level,
+                "timestamp": datetime.datetime.now()
+            }
+            if db_con: 
+                analytics_collection.insert_one(analytics_doc)
+                update_personality_profile(user_id, analytics_data)
+                
+                # Update Daily Trend
+                date_str = datetime.datetime.now().strftime("%Y-%m-%d")
+                emotional_trend_collection.update_one(
+                    {"user_id": user_id, "date": date_str},
+                    {"$push": {"moods": analytics_data["mood_score"], "stresses": analytics_data["stress_score"]}},
+                    upsert=True
+                )
 
-            # Log risk if high
             if risk_level == "High":
                 log_high_risk_event(user_id, user_message)
             
@@ -608,14 +718,146 @@ def chat():
 
         return jsonify({
             "reply": bot_reply,
+            "suggestion": coping_tip,
             "sentiment": sentiment_label,
             "risk": risk_level,
+            "issue": issue_type,
             "ask_consent": risk_level == "High"
         })
     except Exception as fatal_err:
         print(f" [FATAL] Global Error: {fatal_err}")
         traceback.print_exc()
         return jsonify({"reply": "I'm experiencing a small temporary issue, but I'm still here for you. Tell me more?"}), 500
+
+# ---- VOICE LLM INTERFACE ----
+@app.route('/voice-chat', methods=['POST'])
+@jwt_required(optional=True)
+def voice_chat():
+    try:
+        data = request.json
+        user_message = data.get('message', '')
+        lang = data.get('lang', 'en') # 'en', 'hi', or 'hinglish'
+        mode = data.get('mode', 'normal')
+        user_id = get_jwt_identity()
+
+        # 1. Pipeline Analysis
+        sentiment_result = None
+        sentiment_label = "NEUTRAL"
+        if sentiment_pipeline:
+            try:
+                sentiment_result = sentiment_pipeline(user_message)
+                sentiment_label = sentiment_result[0]['label']
+            except: pass
+        
+        risk_level = get_risk_level(user_message, sentiment_result)
+        issue_type = detect_issue(user_message)
+        coping_tip = get_coping_suggestion(issue_type)
+
+        # 2. Context & Personality Loading
+        context = ""
+        personality_context = ""
+        if user_id:
+            user_history = list(chats_collection.find({"user_id": user_id}).sort("timestamp", -1).limit(5))[::-1]
+            for c in user_history:
+                context += f"User: {c.get('user_message', '')}\nMindSaarthi: {c.get('bot_reply', '')}\n"
+            
+            profile = personality_collection.find_one({"user_id": user_id})
+            if profile:
+                personality_context = f"User Memory: Frequent {profile.get('dominant_issue')} during {profile.get('peak_stress_period')}."
+
+        # 3. Empathic Conversational Prompt
+        system_prompt = f"You are MindSaarthi, a compassionate human therapist. Language: {lang}."
+        if mode == "therapy":
+            system_prompt += " Therapy Mode: Ask deep, reflective questions. Speak slowly. Focus on emotional roots."
+        
+        prompt = f"""
+        {personality_context}
+        Context: {context}
+        User Message: "{user_message}"
+        Risk Level: {risk_level}
+        Issue: {issue_type}
+        
+        STRICT VOICE INSTRUCTIONS:
+        1. Keep response under 2 sentences. Sound natural (use "hmm", "I see").
+        2. Match the requested language ({lang}). If Hinglish, use casual natural phrases.
+        3. Split your answer into distinct short logical chunks, separated by " | ".
+        """
+        
+        bot_reply = "Hmm... I understand... | Tell me a bit more about what you're feeling."
+        if ai_client:
+            try:
+                response = ai_client.chat.completions.create(
+                    model="google/gemini-2.0-flash-001",
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": prompt}
+                    ],
+                    max_tokens=80
+                )
+                bot_reply = response.choices[0].message.content.strip().replace("*", "")
+            except Exception as e:
+                print(f"[VOICE AI ERROR]: {e}")
+
+        reply_chunks = [c.strip() for c in bot_reply.split("|") if c.strip()]
+        if not reply_chunks: reply_chunks = [bot_reply]
+
+        # 4. Text to Speech Generation (gTTS)
+        tts_lang = 'en'
+        tld = 'com'
+        if lang == 'hi': 
+            tts_lang = 'hi'
+            tld = 'co.in'
+        elif lang == 'hinglish':
+            tts_lang = 'en'
+            tld = 'co.in'
+
+        audio_chunks_b64 = []
+        is_slow = (risk_level == "High" or mode == "therapy")
+        
+        for index, chunk in enumerate(reply_chunks):
+            chunk_for_tts = chunk.replace("...", ". ")
+            tts = gTTS(text=chunk_for_tts, lang=tts_lang, tld=tld, slow=is_slow)
+            buffer = io.BytesIO()
+            tts.write_to_fp(buffer)
+            buffer.seek(0)
+            audio_chunks_b64.append(base64.b64encode(buffer.read()).decode('utf-8'))
+        
+        # 5. Logging & Analytics
+        if user_id:
+            chat_doc = {
+                "user_id": user_id,
+                "user_message": user_message,
+                "bot_reply": bot_reply,
+                "sentiment": sentiment_label,
+                "risk": risk_level,
+                "session_type": "Call",
+                "timestamp": datetime.datetime.now()
+            }
+            if db_con: chats_collection.insert_one(chat_doc)
+            
+            analytics_data = calculate_analytics_scores(user_message, sentiment_label, risk_level)
+            if db_con:
+                analytics_collection.insert_one({
+                    "user_id": user_id,
+                    **analytics_data,
+                    "risk_level": risk_level,
+                    "timestamp": datetime.datetime.now()
+                })
+                update_personality_profile(user_id, analytics_data)
+                
+            generate_session_report(user_id, user_message, sentiment_label, risk_level, issue_type, session_type="Call")
+
+        return jsonify({
+            "reply": bot_reply.replace(" | ", " "),
+            "reply_chunks": reply_chunks,
+            "audio_chunks": audio_chunks_b64,
+            "suggestion": coping_tip,
+            "risk": risk_level,
+            "issue": issue_type
+        })
+    except Exception as e:
+        print(f"[VOICE GLOBAL ERROR]: {e}")
+        return jsonify({"error": str(e)}), 500
 
 # ---- EMERGENCY TRIGGER (AFTER CONSENT) ----
 @app.route('/emergency-confirm', methods=['POST'])
@@ -833,6 +1075,51 @@ def get_weekly_score():
         "status": "Improving" if final_score > 60 else "Requires Attention"
     })
 
+# ---- PERSONALIZATION & TRENDS ENDPOINTS ----
+
+@app.route('/emotional-trend', methods=['GET'])
+@jwt_required()
+def get_emotional_trend():
+    user_id = get_jwt_identity()
+    if emotional_trend_collection is None: return jsonify([])
+    
+    # Fetch last 7 days inclusive of today
+    end_date = datetime.datetime.now()
+    start_date = end_date - datetime.timedelta(days=6)
+    
+    trends = list(emotional_trend_collection.find({
+        "user_id": user_id,
+        "date": {"$gte": start_date.strftime("%Y-%m-%d"), "$lte": end_date.strftime("%Y-%m-%d")}
+    }).sort("date", 1))
+    
+    formatted = []
+    for t in trends:
+        avg_mood = sum(t["moods"]) / len(t["moods"]) if t["moods"] else 0
+        avg_stress = sum(t["stresses"]) / len(t["stresses"]) if t["stresses"] else 0
+        formatted.append({
+            "date": t["date"],
+            "mood": round(avg_mood),
+            "stress": round(avg_stress)
+        })
+    return jsonify(formatted)
+
+@app.route('/user-insights', methods=['GET'])
+@jwt_required()
+def get_user_insights():
+    user_id = get_jwt_identity()
+    if personality_collection is None: return jsonify({})
+    profile = personality_collection.find_one({"user_id": user_id})
+    if not profile: return jsonify({"message": "Keep talking to MindSaarthi to unlock personal insights!"})
+    
+    insight_text = f"You tend to feel more {profile.get('dominant_issue')} during the {profile.get('peak_stress_period')}."
+    return jsonify({
+        "dominant_issue": profile.get("dominant_issue"),
+        "peak_stress_period": profile.get("peak_stress_period"),
+        "insight": insight_text,
+        "avg_mood": profile.get("avg_mood"),
+        "avg_stress": profile.get("avg_stress")
+    })
+
 @app.route('/download-report/<report_id>', methods=['GET'])
 @jwt_required()
 def download_pdf_report(report_id):
@@ -917,5 +1204,168 @@ def download_pdf_report(report_id):
     
     return send_file(buffer, as_attachment=True, download_name=f"MindSaarthi_Report_{report_id}.pdf", mimetype='application/pdf')
 
+# ---- GROUP CHAT & SOCKET.IO FEATURES ----
+
+# Room definitions
+CHAT_ROOMS = {
+    "anxiety": "Inner Calm Circle",
+    "stress": "Balance & Flow",
+    "depression": "Hope Horizon",
+    "loneliness": "Connection Corner",
+    "general": "Mindful Meadows",
+    "crisis": "Safe Haven"
+}
+
+ANONYMOUS_ADJECTIVES = ["Quiet", "Brave", "Calm", "Gentle", "Resilient", "Kind", "Strong", "Peaceful"]
+@app.route('/user/profile', methods=['GET', 'POST'])
+@jwt_required()
+def user_profile():
+    user_id = get_jwt_identity()
+    if request.method == 'GET':
+        user = users_collection.find_one({"_id": ObjectId(user_id)})
+        return jsonify({
+            "name": user.get("name"),
+            "email": user.get("email"),
+            "anonymous_mode": user.get("anonymous_mode", False),
+            "interests": user.get("interests", [])
+        })
+    else:
+        data = request.json
+        users_collection.update_one(
+            {"_id": ObjectId(user_id)},
+            {"$set": {
+                "anonymous_mode": data.get("anonymous_mode", False),
+                "interests": data.get("interests", [])
+            }}
+        )
+        return jsonify({"success": True})
+
+@socketio.on('join_group')
+def on_join(data):
+    user_id = data.get('user_id')
+    user = users_collection.find_one({"_id": ObjectId(user_id)})
+    if not user: return
+    
+    # Smart Matching: Detect issue from profile or recent chats
+    profile = personality_collection.find_one({"user_id": user_id})
+    issue = profile.get("dominant_issue", "general") if profile else "general"
+    room = issue if issue in CHAT_ROOMS else "general"
+    
+    join_room(room)
+    
+    display_name = get_anonymous_name(user_id) if user.get("anonymous_mode") else user.get("name")
+    
+    emit('status', {
+        'msg': f"{display_name} has entered the room.",
+        'room_name': CHAT_ROOMS[room],
+        'room_id': room
+    }, room=room)
+    
+    # Send recent messages (last 20)
+    # (Implementation for fetching from separate group_chats_collection could go here)
+
+@socketio.on('send_group_message')
+def handle_group_message(data):
+    room = data.get('room')
+    user_id = data.get('user_id')
+    message = data.get('message')
+    is_sticker = data.get('is_sticker', False)
+    
+    user = users_collection.find_one({"_id": ObjectId(user_id)})
+    if not user: return
+
+    # 1. AI Moderation & Toxicity Check
+    sentiment_result = None
+    risk_level = "Low"
+    
+    if not is_sticker:
+        if sentiment_pipeline:
+            try:
+                sentiment_result = sentiment_pipeline(message)
+            except: pass
+        
+        risk_level = get_risk_level(message, sentiment_result)
+        
+        # Toxicity detection (simplified: if sentiment is highly negative + risk is high)
+        if risk_level == "High" and sentiment_result and sentiment_result[0]['score'] > 0.98:
+            emit('moderation_alert', {'msg': 'Your message was flagged as potentially harmful and blocked.'}, room=request.sid)
+            return
+
+    display_name = get_anonymous_name(user_id) if user.get("anonymous_mode") else user.get("name")
+    
+    msg_id = str(ObjectId())
+    emit('new_message', {
+        'id': msg_id,
+        'user': display_name,
+        'user_id': user_id,
+        'message': message,
+        'is_sticker': is_sticker,
+        'risk': risk_level,
+        'timestamp': datetime.datetime.now().strftime("%I:%M %p")
+    }, room=room)
+    
+    # 2. Crisis Detection trigger
+    if not is_sticker and risk_level == "High":
+        emit('crisis_alert', {
+            'msg': 'High-risk content detected. Please check our resources page or call 988.',
+            'helpline': '988'
+        }, room=request.sid)
+
+    # 3. AI Bot Reaction (Reactive)
+    if random.random() < 0.3: # 30% chance for bot to respond
+        trigger_bot_response(room, message)
+
+def trigger_bot_response(room, user_message):
+    """AI Bot in Group Reacts to the conversation."""
+    if not ai_client: return
+    
+    prompt = f"""
+    You are 'Saarthi-Bot', a supportive AI presence in a mental health group chat.
+    The room name is '{CHAT_ROOMS.get(room, 'Safe Space')}'.
+    A user just said: "{user_message}"
+    
+    Give a short (1-2 sentences), warm, and supportive response that encourages the group.
+    Don't sound like a robot. Be a companion.
+    """
+    
+    try:
+        response = ai_client.chat.completions.create(
+            model="google/gemini-2.0-flash-001",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        bot_reply = response.choices[0].message.content.strip()
+        
+        emit('new_message', {
+            'id': str(ObjectId()),
+            'user': "Saarthi Bot ✨",
+            'is_bot': True,
+            'message': bot_reply,
+            'timestamp': datetime.datetime.now().strftime("%I:%M %p")
+        }, room=room)
+    except: pass
+
+@socketio.on('send_reaction')
+def handle_reaction(data):
+    room = data.get('room')
+    msg_id = data.get('msg_id')
+    reaction = data.get('type') # support, hug, relate
+    
+    emit('new_reaction', {
+        'msg_id': msg_id,
+        'type': reaction
+    }, room=room)
+
+@socketio.on('voice_chunk')
+def handle_voice(data):
+    # For push-to-talk: broadcast chunk to room
+    room = data.get('room')
+    user_id = data.get('user_id')
+    audio_data = data.get('audio') # base64 chunk
+    
+    emit('incoming_voice', {
+        'user_id': user_id,
+        'audio': audio_data
+    }, room=room, include_self=False)
+
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    socketio.run(app, debug=True, port=5000, use_reloader=False)
