@@ -1,7 +1,12 @@
 print("--- BACKEND STARTING ---")
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
-from transformers import pipeline
+try:
+    from transformers import pipeline
+except ImportError:
+    print("WARNING: 'transformers' not found. Local sentiment analysis will be disabled (fallback to AI sentiment).")
+    pipeline = None
+
 from flask_bcrypt import Bcrypt
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 import pymongo
@@ -163,10 +168,14 @@ except Exception as e:
     print("Demo user init failed:", e)
 
 # Load sentiment-analysis pipeline (uses distilbert internally, outputs POSITIVE/NEGATIVE)
-print("Loading NLP pipeline... This may take a moment.")
+print("Checking for sentiment-analysis capability...")
 try:
-    sentiment_pipeline = pipeline("sentiment-analysis", model="distilbert-base-uncased-finetuned-sst-2-english")
-    print("Pipeline loaded!")
+    if pipeline:
+        sentiment_pipeline = pipeline("sentiment-analysis", model="distilbert-base-uncased-finetuned-sst-2-english")
+        print("NLP Pipeline loaded!")
+    else:
+        sentiment_pipeline = None
+        print("Pipeline initialization skipped (transformers not installed).")
 except Exception as e:
     print(f"Error loading pipeline: {e}")
     sentiment_pipeline = None
