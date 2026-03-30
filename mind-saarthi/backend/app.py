@@ -1,11 +1,8 @@
 print("--- BACKEND STARTING ---")
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
-try:
-    from transformers import pipeline
-except ImportError:
-    print("WARNING: 'transformers' not found. Local sentiment analysis will be disabled (fallback to AI sentiment).")
-    pipeline = None
+# Heavy NLP pipeline disabled for deployment stability (avoids 30s load delay)
+pipeline = None
 
 from flask_bcrypt import Bcrypt
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
@@ -161,18 +158,20 @@ try:
 except Exception as e:
     print("Demo user init failed:", e)
 
-# Load sentiment-analysis pipeline (uses distilbert internally, outputs POSITIVE/NEGATIVE)
-print("Checking for sentiment-analysis capability...")
-try:
-    if pipeline:
-        sentiment_pipeline = pipeline("sentiment-analysis", model="distilbert-base-uncased-finetuned-sst-2-english")
-        print("NLP Pipeline loaded!")
-    else:
-        sentiment_pipeline = None
-        print("Pipeline initialization skipped (transformers not installed).")
-except Exception as e:
-    print(f"Error loading pipeline: {e}")
-    sentiment_pipeline = None
+# --- Lightweight Sentiment Fallback (Replacement for heavy NLP) ---
+def get_simple_sentiment(text):
+    text = text.lower()
+    negative_words = ["sad", "hate", "bad", "angry", "worst", "kill", "die", "hurt", "pain", "hopeless"]
+    positive_words = ["happy", "good", "great", "love", "hope", "better", "best", "thank"]
+    
+    neg_count = sum(1 for w in negative_words if w in text)
+    pos_count = sum(1 for w in positive_words if w in text)
+    
+    if neg_count > pos_count: return "NEGATIVE"
+    if pos_count > neg_count: return "POSITIVE"
+    return "NEUTRAL"
+
+sentiment_pipeline = None # Disabled heavy local model
 
 # ---- Helper Functions ----
 def get_risk_level(text, sentiment_result):
@@ -624,6 +623,8 @@ def get_hardcoded_empathy(risk_level, sentiment):
 @app.route('/chat', methods=['POST'])
 @jwt_required(optional=True)
 def chat():
+    import time
+    start_time = time.time()
     print("\n" + "="*50)
     print(" NEW CHAT REQUEST RECEIVED")
     print("="*50)
@@ -640,10 +641,12 @@ def chat():
         sentiment_result = None
         sentiment_label = "NEUTRAL"
         if sentiment_pipeline:
-            try:
-                sentiment_result = sentiment_pipeline(user_message)
-                sentiment_label = sentiment_result[0]['label']
-            except: pass
+             try:
+                 sentiment_result = sentiment_pipeline(user_message)
+                 sentiment_label = sentiment_result[0]['label']
+             except: pass
+        else:
+             sentiment_label = get_simple_sentiment(user_message)
         
         risk_level = get_risk_level(user_message, sentiment_result)
         issue_type = detect_issue(user_message)
@@ -739,6 +742,7 @@ def chat():
             if db_con and analytics_collection is not None:
                 analytics_collection.insert_one(analytics_doc)
 
+        print(f" [SUCCESS] Request Processed in {round(time.time() - start_time, 2)}s")
         return jsonify({
             "reply": bot_reply,
             "suggestion": coping_tip,
