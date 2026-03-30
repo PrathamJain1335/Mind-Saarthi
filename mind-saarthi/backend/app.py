@@ -19,7 +19,7 @@ import json
 import io
 from dotenv import load_dotenv
 from openai import OpenAI
-from twilio.rest import Client
+from twilio.rest import Client  
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 # reportlab for PDF generation
@@ -46,14 +46,8 @@ CORS(app) # Enable CORS for frontend
 # Use environment variable for Frontend URL, fallback to * for dev
 FRONTEND_URL = os.getenv("FRONTEND_URL", "*")
 
-# Initialize SocketIO with production-grade CORS and async_mode
-socketio = SocketIO(
-    app, 
-    cors_allowed_origins=FRONTEND_URL, 
-    async_mode='eventlet', 
-    ping_timeout=60, 
-    ping_interval=25
-)
+# Initialize SocketIO with requested production-grade config
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
 
 SOOTHING_NAMES = [
     "Quiet Lotus", "Brave Willow", "Zen Panda", "Mindful Breeze",
