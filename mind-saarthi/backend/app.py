@@ -37,7 +37,18 @@ print(f"DEBUG: OPENROUTER_API_KEY value: {os.getenv('OPENROUTER_API_KEY')[:5] if
 
 app = Flask(__name__)
 CORS(app) # Enable CORS for frontend
-socketio = SocketIO(app, cors_allowed_origins="*")
+
+# Use environment variable for Frontend URL, fallback to * for dev
+FRONTEND_URL = os.getenv("FRONTEND_URL", "*")
+
+# Initialize SocketIO with production-grade CORS and async_mode
+socketio = SocketIO(
+    app, 
+    cors_allowed_origins=FRONTEND_URL, 
+    async_mode='eventlet', 
+    ping_timeout=60, 
+    ping_interval=25
+)
 
 SOOTHING_NAMES = [
     "Quiet Lotus", "Brave Willow", "Zen Panda", "Mindful Breeze",
@@ -1368,4 +1379,5 @@ def handle_voice(data):
     }, room=room, include_self=False)
 
 if __name__ == '__main__':
-    socketio.run(app, debug=True, port=5000, use_reloader=False)
+    port = int(os.getenv("PORT", 5000))
+    socketio.run(app, host='0.0.0.0', port=port, debug=False)
