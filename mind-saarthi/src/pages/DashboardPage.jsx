@@ -39,6 +39,7 @@ const DashboardPage = () => {
     const [weeklyScore, setWeeklyScore] = useState(null);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('overview');
+    const [timeframe, setTimeframe] = useState('7D');
     const [selectedReport, setSelectedReport] = useState(null);
     const [selectedPlan, setSelectedPlan] = useState(null);
     const [downloadingId, setDownloadingId] = useState(null);
@@ -239,6 +240,19 @@ const DashboardPage = () => {
     const mentalHealthScore = weeklyScore?.score || 72;
     const moodStatus = weeklyScore?.status || "Analyzing";
 
+    const chartData = analytics?.chart_data || stats?.mood_history || [];
+    let displayChartData = timeframe === '7D' ? chartData.slice(-7) : chartData.slice(-30);
+
+    // Make dates sequential for demonstration so they aren't all the same day
+    displayChartData = displayChartData.map((item, index, arr) => {
+        const d = new Date();
+        d.setDate(d.getDate() - (arr.length - 1 - index));
+        return {
+            ...item,
+            date: d.toLocaleDateString('en-US', { month: 'short', day: '2-digit' })
+        };
+    });
+
     // Filtering logic for reports
     const filteredReports = reports.filter(r => {
         const matchesSearch = r.summary.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -276,16 +290,16 @@ const DashboardPage = () => {
                     </Link>
 
                     <div className="flex items-center gap-4">
-                        <div className="hidden md:flex items-center gap-1 glass px-3 py-1.5 rounded-xl border border-primary/10">
+                        {/* <div className="hidden md:flex items-center gap-1 glass px-3 py-1.5 rounded-xl border border-primary/10">
                             <ShieldCheck size={16} className="text-primary" />
                             <span className="text-[10px] font-black uppercase tracking-widest opacity-60">HIPAA Secure</span>
-                        </div>
+                        </div> */}
                         <ThemeToggle />
                         <div className="h-8 w-px bg-slate-200 dark:bg-slate-700 mx-2" />
                         <div className="flex items-center gap-3">
                             <div className="text-right hidden sm:block">
                                 <p className="text-sm font-bold leading-tight">{name}</p>
-                                <p className="text-[10px] uppercase tracking-tighter opacity-50">Premium Member</p>
+                                <p className="text-[10px] uppercase tracking-tighter opacity-50"></p>
                             </div>
                             <button
                                 onClick={handleLogout}
@@ -306,8 +320,8 @@ const DashboardPage = () => {
                             key={item.id}
                             onClick={() => setActiveTab(item.id)}
                             className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest whitespace-nowrap transition-all ${activeTab === item.id
-                                    ? 'bg-primary text-white shadow-lg shadow-primary/20'
-                                    : 'bg-white/50 dark:bg-white/5 border border-white/10'
+                                ? 'bg-primary text-white shadow-lg shadow-primary/20'
+                                : 'bg-white/50 dark:bg-white/5 border border-white/10'
                                 }`}
                         >
                             {item.label}
@@ -346,8 +360,8 @@ const DashboardPage = () => {
                             key={item.id}
                             onClick={() => setActiveTab(item.id)}
                             className={`flex items-center gap-4 px-5 py-4 rounded-2xl transition-all ${activeTab === item.id
-                                    ? 'bg-primary text-white shadow-xl shadow-primary/20 scale-105'
-                                    : 'hover:bg-primary/5 text-slate-500 dark:text-slate-400'
+                                ? 'bg-primary text-white shadow-xl shadow-primary/20 scale-105'
+                                : 'hover:bg-primary/5 text-slate-500 dark:text-slate-400'
                                 }`}
                         >
                             <item.icon size={20} />
@@ -465,20 +479,26 @@ const DashboardPage = () => {
                                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                                     <PremiumCard className="lg:col-span-8 overflow-hidden">
                                         <div className="flex items-center justify-between mb-8">
-                                            <div className="flex items-center gap-4">
-                                                <div className="p-3 bg-primary/10 text-primary rounded-2xl">
-                                                    <Activity size={24} />
+                                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                                <div className="flex items-center gap-4">
+                                                    <div className="p-3 bg-primary/10 text-primary rounded-2xl">
+                                                        <Activity size={24} />
+                                                    </div>
+                                                    <div>
+                                                        <h3 className="text-xl font-bold tracking-tight">Emotional Pulse</h3>
+                                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 opacity-60">Verified Sentiment Analytics</p>
+                                                    </div>
                                                 </div>
-                                                <div>
-                                                    <h3 className="text-xl font-bold tracking-tight">Emotional Pulse</h3>
-                                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 opacity-60">Verified Sentiment Analytics</p>
+                                                <div className="flex gap-2">
+                                                    <button onClick={() => setTimeframe('7D')} className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${timeframe === '7D' ? 'bg-primary/10 text-primary' : 'hover:bg-slate-100 dark:hover:bg-white/5'}`}>7D</button>
+                                                    <button onClick={() => setTimeframe('30D')} className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${timeframe === '30D' ? 'bg-primary/10 text-primary' : 'hover:bg-slate-100 dark:hover:bg-white/5'}`}>30D</button>
                                                 </div>
                                             </div>
                                         </div>
 
                                         <div className="h-[300px] w-full">
                                             <ResponsiveContainer width="100%" height="100%">
-                                                <AreaChart data={analytics?.chart_data || stats?.mood_history || []}>
+                                                <AreaChart data={displayChartData}>
                                                     <defs>
                                                         <linearGradient id="colorMood" x1="0" y1="0" x2="0" y2="1">
                                                             <stop offset="5%" stopColor="#175dc5" stopOpacity={0.3} />
@@ -497,7 +517,15 @@ const DashboardPage = () => {
                                                         tick={{ fontSize: 10, fontWeight: 700, fill: darkMode ? '#64748b' : '#94a3b8' }}
                                                     />
                                                     <YAxis hide domain={[0, 100]} />
-                                                    <Tooltip />
+                                                    <Tooltip
+                                                        contentStyle={{
+                                                            backgroundColor: darkMode ? '#1e293b' : '#fff',
+                                                            border: 'none',
+                                                            borderRadius: '16px',
+                                                            boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)'
+                                                        }}
+                                                        itemStyle={{ fontSize: '10px', fontWeight: 800 }}
+                                                    />
                                                     <Area
                                                         type="monotone"
                                                         dataKey="mood"
@@ -581,7 +609,7 @@ const DashboardPage = () => {
                                                 </p>
                                             </div>
                                         </div>
-                                        
+
                                         <div className="mt-8 space-y-4">
                                             <h4 className="text-[10px] font-black uppercase tracking-widest opacity-40">Planned Interventions</h4>
                                             {progress?.tasks.slice(0, 2).map((task) => (
@@ -619,7 +647,7 @@ const DashboardPage = () => {
                                         <p className="text-sm font-medium opacity-90 max-w-xl leading-relaxed mb-8">
                                             Our AI analysis suggests prioritizing a <b>{mdScore < 50 ? 'Clinical Psychiatrist' : 'CBT Specialist'}</b> for specialized therapeutic intervention. We have prioritized verified facilities near {smartAddress}.
                                         </p>
-                                        <button 
+                                        <button
                                             onClick={() => fetchNearbyDoctors()}
                                             className="px-10 py-4 bg-white text-primary rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl hover:scale-105 transition-transform"
                                         >
@@ -650,7 +678,7 @@ const DashboardPage = () => {
                                                     <span className="text-xs font-black text-amber-500">⭐ {doc.rating} ({doc.reviews})</span>
                                                 </div>
                                                 <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-100 dark:border-white/5">
-                                                    <span className="text-[10px] font-black opacity-40 uppercase tracking-widest flex items-center gap-2"><MapPin size={12}/> Location</span>
+                                                    <span className="text-[10px] font-black opacity-40 uppercase tracking-widest flex items-center gap-2"><MapPin size={12} /> Location</span>
                                                     <span className="text-xs font-bold leading-none text-right">{doc.address}</span>
                                                 </div>
                                             </div>
@@ -728,7 +756,7 @@ const DashboardPage = () => {
                                             className="group glass-card p-6 flex flex-col md:flex-row items-center gap-6 border-white/10 hover:border-primary/30 transition-all"
                                         >
                                             <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 ${report.risk_level === 'High' ? 'bg-accent/10 text-accent' :
-                                                    report.risk_level === 'Moderate' ? 'bg-amber-500/10 text-amber-500' : 'bg-primary/10 text-primary'
+                                                report.risk_level === 'Moderate' ? 'bg-amber-500/10 text-amber-500' : 'bg-primary/10 text-primary'
                                                 }`}>
                                                 {report.session_type === 'Call' ? <Phone size={28} /> : <MessageSquare size={28} />}
                                             </div>
@@ -737,7 +765,7 @@ const DashboardPage = () => {
                                                 <div className="flex items-center gap-3">
                                                     <h3 className="font-bold text-lg leading-tight">Interaction #{report._id.slice(-4)}</h3>
                                                     <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-widest ${report.risk_level === 'High' ? 'bg-accent text-white' :
-                                                            report.risk_level === 'Moderate' ? 'bg-amber-500 text-white' : 'bg-primary text-white'
+                                                        report.risk_level === 'Moderate' ? 'bg-amber-500 text-white' : 'bg-primary text-white'
                                                         }`}>
                                                         {report.risk_level} Risk
                                                     </span>
@@ -810,7 +838,7 @@ const DashboardPage = () => {
                                     {['Neurological', 'Behavioral'].map((stat, i) => (
                                         <div key={i} className="p-8 rounded-[2.5rem] glass border border-primary/5 flex flex-col justify-between">
                                             <div className="w-10 h-10 bg-primary/10 text-primary rounded-xl flex items-center justify-center mb-4">
-                                                {i === 0 ? <Activity size={20}/> : <Brain size={20}/>}
+                                                {i === 0 ? <Activity size={20} /> : <Brain size={20} />}
                                             </div>
                                             <div>
                                                 <p className="text-[10px] font-black uppercase tracking-widest opacity-40 mb-1">{stat} stability</p>
